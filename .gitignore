@@ -1,0 +1,32 @@
+# Binaries
+present2pdf
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output
+*.out
+example/*.pdf
+
+# Go workspace file
+go.work
+
+# Vendor
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+TODO.md

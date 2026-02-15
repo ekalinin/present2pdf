@@ -1,0 +1,183 @@
+# Markdown Features in Present
+Full Demonstration of Markdown Capabilities
+15 Feb 2026
+
+Jane Developer
+jane@example.com
+https://github.com/janedeveloper
+
+## Introduction to Markdown in Present
+
+The present tool supports Markdown-style formatting for rich text presentations.
+
+This presentation demonstrates _all_ available Markdown features.
+
+Let's explore what's possible!
+
+## Text Formatting
+
+You can use various text styles:
+
+- _Italic_ text with underscores
+- **Bold** text with double asterisks
+- `Inline code` with backticks
+- Regular text without formatting
+
+Example sentence: This is _important_ information about `present2pdf` tool.
+
+// This is a comment - it will be completely ignored
+
+## Links and References
+
+External links can be included:
+
+Visit the [Go website](https://golang.org) for more information.
+
+You can also reference [documentation](https://pkg.go.dev/golang.org/x/tools/present)
+
+[GitHub repository](https://github.com/golang/tools)
+
+## Code Blocks
+
+Simple inline code example:
+
+	package main
+
+	func greet(name string) string {
+		return fmt.Sprintf("Hello, %s!", name)
+	}
+
+Multi-line code with comments:
+
+	// Calculate fibonacci numbers
+	func fib(n int) int {
+		if n <= 1 {
+			return n
+		}
+		return fib(n-1) + fib(n-2)
+	}
+
+## Lists and Organization
+
+Unordered lists work great:
+
+- First item
+- Second item
+- Third item with _emphasis_
+- Fourth item with `code`
+
+Nested concepts:
+
+- Main topic
+- Subtopic with details
+- Another subtopic
+
+## Complex Code Example {#complex-code}
+
+Here's a more complex example with error handling:
+
+	func readFile(path string) ([]byte, error) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", path, err)
+		}
+		return data, nil
+	}
+
+	func main() {
+		data, err := readFile("config.json")
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Read %d bytes\n", len(data))
+	}
+
+## Tables and Structured Data
+
+While present doesn't support full tables, you can structure data clearly:
+
+Configuration options:
+
+- Port: 8080
+- Host: localhost
+- Timeout: 30s
+- MaxConnections: 100
+
+File formats supported:
+
+- .slide - Present format
+- .pdf - Output format
+- .go - Code examples
+- .md - Documentation
+
+## Practical Example: HTTP Server {#http-server}
+
+Building a simple HTTP server in Go:
+
+	func handler(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "Hello, %s!", r.URL.Path[1:])
+	}
+
+	func main() {
+		http.HandleFunc("/", handler)
+		log.Println("Starting server on :8080")
+		log.Fatal(http.ListenAndServe(":8080", nil))
+	}
+
+Key points:
+
+- Handler function processes requests
+- ListenAndServe starts the server
+- Error handling with log.Fatal
+
+## Best Practices
+
+Tips for great presentations:
+
+- Keep slides _focused_ and _concise_
+- Use code examples that are `self-contained`
+- Highlight key concepts with _emphasis_
+- Include practical, working code
+- Test your examples before presenting
+
+Remember: **Less is more!**
+
+## Advanced Formatting
+
+Special characters and symbols:
+
+- Arrows: -> and <-
+- Operators: ==, !=, <=, >=
+- Go-specific: :=, ..., <-chan
+
+Mathematical notation:
+
+- O(n) for linear complexity
+- O(log n) for logarithmic
+- O(1) for constant time
+
+## Resources and Documentation
+
+Learn more about present:
+
+- [Tool documentation](https://pkg.go.dev/golang.org/x/tools/present)
+- [Go blog](https://blog.golang.org)
+- [Go documentation](https://go.dev/doc)
+
+Additional resources:
+
+- [Effective Go](https://go.dev/doc/effective_go)
+- [Go by Example](https://gobyexample.com)
+
+## Conclusion
+
+Markdown in present enables:
+
+- _Rich_ text formatting
+- `Code` highlighting
+- Clean, readable slides
+- Professional presentations
+
+Thank you for exploring present2pdf!
+
+Questions? Feedback? Let's discuss!
