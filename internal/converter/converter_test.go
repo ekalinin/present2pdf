@@ -1035,7 +1035,7 @@ func TestGetAvailableStyles(t *testing.T) {
 func TestNewConverterWithStyle(t *testing.T) {
 	tests := []struct {
 		name      string
-		styleName string
+		codeTheme string
 	}{
 		{"monokai style", "monokai"},
 		{"github style", "github"},
@@ -1045,12 +1045,12 @@ func TestNewConverterWithStyle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			conv := NewConverterWithStyle(tt.styleName)
+			conv := NewConverterWithStyle(tt.codeTheme)
 			if conv == nil {
 				t.Error("NewConverterWithStyle() returned nil")
 			}
-			if conv.styleName != tt.styleName {
-				t.Errorf("NewConverterWithStyle() styleName = %q, want %q", conv.styleName, tt.styleName)
+			if conv.codeTheme != tt.codeTheme {
+				t.Errorf("NewConverterWithStyle() codeTheme = %q, want %q", conv.codeTheme, tt.codeTheme)
 			}
 		})
 	}
@@ -1077,8 +1077,8 @@ Author
 
 	styles := []string{"monokai", "github", "dracula"}
 
-	for _, styleName := range styles {
-		t.Run(styleName, func(t *testing.T) {
+	for _, codeTheme := range styles {
+		t.Run(codeTheme, func(t *testing.T) {
 			tmpFile, err := os.CreateTemp("", "style-*.slide")
 			if err != nil {
 				t.Fatalf("Failed to create temp file: %v", err)
@@ -1093,19 +1093,19 @@ Author
 			outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
 			defer os.Remove(outputPath)
 
-			conv := NewConverterWithStyle(styleName)
+			conv := NewConverterWithStyle(codeTheme)
 			err = conv.Convert(tmpFile.Name(), outputPath)
 			if err != nil {
-				t.Errorf("Convert() failed for style %s: %v", styleName, err)
+				t.Errorf("Convert() failed for style %s: %v", codeTheme, err)
 			}
 
 			// Check if output file exists
 			info, err := os.Stat(outputPath)
 			if os.IsNotExist(err) {
-				t.Errorf("Output PDF file was not created for style %s", styleName)
+				t.Errorf("Output PDF file was not created for style %s", codeTheme)
 			}
 			if info.Size() < 1024 {
-				t.Errorf("PDF file too small for style %s: %d bytes", styleName, info.Size())
+				t.Errorf("PDF file too small for style %s: %d bytes", codeTheme, info.Size())
 			}
 		})
 	}

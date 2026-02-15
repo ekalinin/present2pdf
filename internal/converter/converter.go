@@ -17,7 +17,7 @@ import (
 // Converter handles conversion from .slide to PDF
 type Converter struct {
 	pdf       *gofpdf.Fpdf
-	styleName string // Name of the syntax highlighting style
+	codeTheme string // Name of the syntax highlighting style
 }
 
 // Token represents a syntax-highlighted token
@@ -30,14 +30,14 @@ type Token struct {
 // NewConverter creates a new converter instance
 func NewConverter() *Converter {
 	return &Converter{
-		styleName: "monokai", // default style
+		codeTheme: "monokai", // default style
 	}
 }
 
 // NewConverterWithStyle creates a new converter instance with specified style
-func NewConverterWithStyle(styleName string) *Converter {
+func NewConverterWithStyle(codeTheme string) *Converter {
 	return &Converter{
-		styleName: styleName,
+		codeTheme: codeTheme,
 	}
 }
 
@@ -452,7 +452,7 @@ func (c *Converter) highlightCode(code, language string) ([]Token, error) {
 	lexer = chroma.Coalesce(lexer)
 
 	// Get style
-	style := styles.Get(c.styleName)
+	style := styles.Get(c.codeTheme)
 	if style == nil {
 		style = styles.Fallback
 	}
