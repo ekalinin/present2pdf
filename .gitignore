@@ -1,5 +1,4 @@
 # Binaries
-./present2pdf
 *.exe
 *.dll
 *.so
@@ -31,3 +30,4 @@ Thumbs.db
 
 TODO.md
 present2pdf
+!cmd/

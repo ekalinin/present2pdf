@@ -8,6 +8,8 @@ A command-line application in Go for converting presentations from `.slide` form
 - ✅ Support for headers and text
 - ✅ Bulleted lists
 - ✅ Code blocks with syntax highlighting
+- ✅ Customizable code highlighting themes (80+ themes available)
+- ✅ PDF color themes (light and dark)
 - ✅ Author and date information
 - ✅ Beautiful slide design
 - ✅ Simple command-line interface
@@ -39,8 +41,17 @@ go build -o present2pdf ./cmd/present2pdf
 # With custom code highlighting theme
 ./present2pdf -input presentation.slide -code-theme dracula
 
-# List available themes
+# With custom PDF theme
+./present2pdf -input presentation.slide -theme dark
+
+# Combine code and PDF themes
+./present2pdf -input presentation.slide -code-theme github -theme dark
+
+# List available code highlighting themes
 ./present2pdf -list-code-themes
+
+# List available PDF themes
+./present2pdf -list-themes
 
 # Use Makefile for example
 make example
@@ -51,7 +62,9 @@ make example
 - `-input` - path to input .slide file (required)
 - `-output` - path to output PDF file (optional, defaults to input filename with .pdf extension)
 - `-code-theme` - code syntax highlighting theme (optional, default: `monokai`)
+- `-theme` - PDF color theme: `light` or `dark` (optional, default: `light`)
 - `-list-code-themes` - list all available code highlighting themes and exit
+- `-list-themes` - list all available PDF themes and exit
 - `-h` - show help
 
 ## .slide File Format
@@ -158,7 +171,7 @@ Code blocks in your slides are automatically highlighted with proper syntax colo
 - **Customizable color schemes**: Choose from 70+ themes including monokai, github, dracula, vim, solarized, and more
 - **Fallback to plain rendering** if highlighting fails
 
-#### Available Themes
+#### Available Code Themes
 
 Run `./present2pdf -list-code-themes` to see all available options. Popular themes include:
 
@@ -169,6 +182,48 @@ Run `./present2pdf -list-code-themes` to see all available options. Popular them
 - `vim` - Classic Vim colors
 - `nord` - Arctic-inspired color palette
 - And 60+ more!
+
+### PDF Themes
+
+The tool supports different color themes for the PDF presentation itself, allowing you to customize the overall look and feel:
+
+#### Light Theme (default)
+
+- Blue title slide background
+- White slide backgrounds
+- Blue titles and accents
+- Black text
+- Dark code blocks with syntax highlighting
+
+#### Dark Theme
+
+- Dark blue-gray backgrounds
+- Light text on dark backgrounds
+- Blue accents
+- Optimized for dark environments
+- Matches modern dark mode aesthetics
+
+**Usage:**
+
+```bash
+# Use light theme (default)
+./present2pdf -input presentation.slide -theme light
+
+# Use dark theme
+./present2pdf -input presentation.slide -theme dark
+
+# List all available PDF themes
+./present2pdf -list-themes
+```
+
+You can combine PDF themes with code highlighting themes:
+
+```bash
+# Dark PDF with GitHub code style
+./present2pdf -input presentation.slide -theme dark -code-theme github
+```
+
+For more details, see [PDF_THEMES.md](PDF_THEMES.md).
 
 #### Usage
 

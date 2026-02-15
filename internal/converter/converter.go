@@ -14,10 +14,75 @@ import (
 	"golang.org/x/tools/present"
 )
 
+// RGB represents an RGB color
+type RGB struct {
+	R, G, B int
+}
+
+// Theme defines the color scheme for PDF presentation
+type Theme struct {
+	// Title slide colors
+	TitleBackground RGB
+	TitleText       RGB
+	TitleSubtext    RGB
+	TitleDate       RGB
+
+	// Content slide colors
+	SlideBackground RGB
+	SlideTitle      RGB
+	SlideTitleLine  RGB
+	SlideText       RGB
+
+	// Code block colors
+	CodeBackground  RGB
+	CodeText        RGB
+	CodeLineNumber  RGB
+}
+
+// Predefined themes
+var (
+	// LightTheme is the default light theme
+	LightTheme = Theme{
+		TitleBackground: RGB{41, 128, 185},   // Blue
+		TitleText:       RGB{255, 255, 255},  // White
+		TitleSubtext:    RGB{255, 255, 255},  // White
+		TitleDate:       RGB{255, 255, 255},  // White
+		SlideBackground: RGB{255, 255, 255},  // White
+		SlideTitle:      RGB{41, 128, 185},   // Blue
+		SlideTitleLine:  RGB{41, 128, 185},   // Blue
+		SlideText:       RGB{0, 0, 0},        // Black
+		CodeBackground:  RGB{40, 44, 52},     // Dark gray
+		CodeText:        RGB{171, 178, 191},  // Light gray
+		CodeLineNumber:  RGB{128, 128, 128},  // Gray
+	}
+
+	// DarkTheme is a dark theme
+	DarkTheme = Theme{
+		TitleBackground: RGB{30, 30, 46},     // Dark blue-gray
+		TitleText:       RGB{205, 214, 244},  // Light gray
+		TitleSubtext:    RGB{166, 173, 200},  // Medium gray
+		TitleDate:       RGB{137, 180, 250},  // Light blue
+		SlideBackground: RGB{36, 39, 58},     // Dark gray-blue
+		SlideTitle:      RGB{137, 180, 250},  // Light blue
+		SlideTitleLine:  RGB{137, 180, 250},  // Light blue
+		SlideText:       RGB{205, 214, 244},  // Light gray
+		CodeBackground:  RGB{30, 30, 46},     // Darker blue-gray
+		CodeText:        RGB{205, 214, 244},  // Light gray
+		CodeLineNumber:  RGB{108, 112, 134},  // Medium gray
+	}
+
+	// availableThemes maps theme names to themes
+	availableThemes = map[string]Theme{
+		"light": LightTheme,
+		"dark":  DarkTheme,
+	}
+)
+
 // Converter handles conversion from .slide to PDF
 type Converter struct {
 	pdf       *gofpdf.Fpdf
 	codeTheme string // Name of the syntax highlighting style
+	theme     Theme  // Color theme for the presentation
 }
 
 // Token represents a syntax-highlighted token
@@ -27,23 +92,54 @@ type Token struct {
 	Color [3]int // RGB color
 }
 
-// NewConverter creates a new converter instance
-func NewConverter() *Converter {
-	return &Converter{
-		codeTheme: "monokai", // default style
+// Option is a functional option for configuring the Converter
+type Option func(*Converter)
+
+// WithCodeTheme sets the code syntax highlighting theme
+func WithCodeTheme(themeName string) Option {
+	return func(c *Converter) {
+		c.codeTheme = themeName
 	}
 }
 
-// NewConverterWithStyle creates a new converter instance with specified style
-func NewConverterWithStyle(codeTheme string) *Converter {
-	return &Converter{
-		codeTheme: codeTheme,
+// WithTheme sets the PDF color theme
+func WithTheme(themeName string) Option {
+	return func(c *Converter) {
+		if theme, ok := availableThemes[themeName]; ok {
+			c.theme = theme
+		}
+		// If theme not found, keep the default
 	}
+}
+
+// NewConverter creates a new converter instance with optional configuration
+func NewConverter(opts ...Option) *Converter {
+	// Default configuration
+	c := &Converter{
+		codeTheme: "monokai",
+		theme:     LightTheme,
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
 }
 
 // GetAvailableStyles returns a list of available syntax highlighting styles
 func GetAvailableStyles() []string {
 	return styles.Names()
+}
+
+// GetAvailableThemes returns a list of available PDF themes
+func GetAvailableThemes() []string {
+	themes := make([]string, 0, len(availableThemes))
+	for name := range availableThemes {
+		themes = append(themes, name)
+	}
+	return themes
 }
 
 // Convert converts a .slide file to PDF
@@ -91,17 +187,18 @@ func (c *Converter) renderTitleSlide(doc *present.Doc) {
 	c.pdf.AddPage()
 
 	// Background
-	c.pdf.SetFillColor(41, 128, 185)
+	c.pdf.SetFillColor(c.theme.TitleBackground.R, c.theme.TitleBackground.G, c.theme.TitleBackground.B)
 	c.pdf.Rect(0, 0, 297, 210, "F")
 
 	// Title
-	c.pdf.SetTextColor(255, 255, 255)
+	c.pdf.SetTextColor(c.theme.TitleText.R, c.theme.TitleText.G, c.theme.TitleText.B)
 	c.pdf.SetFont("Arial", "B", 36)
 	c.pdf.SetXY(20, 70)
 	c.pdf.MultiCell(257, 15, doc.Title, "", "C", false)
 
 	// Subtitle
 	if doc.Subtitle != "" {
+		c.pdf.SetTextColor(c.theme.TitleSubtext.R, c.theme.TitleSubtext.G, c.theme.TitleSubtext.B)
 		c.pdf.SetFont("Arial", "", 20)
 		c.pdf.SetXY(20, 95)
 		c.pdf.MultiCell(257, 10, doc.Subtitle, "", "C", false)
@@ -109,6 +206,7 @@ func (c *Converter) renderTitleSlide(doc *present.Doc) {
 
 	// Authors
 	if len(doc.Authors) > 0 {
+		c.pdf.SetTextColor(c.theme.TitleSubtext.R, c.theme.TitleSubtext.G, c.theme.TitleSubtext.B)
 		c.pdf.SetFont("Arial", "", 14)
 		y := 130.0
 		for _, author := range doc.Authors {
@@ -123,6 +221,7 @@ func (c *Converter) renderTitleSlide(doc *present.Doc) {
 
 	// Date
 	if !doc.Time.IsZero() {
+		c.pdf.SetTextColor(c.theme.TitleDate.R, c.theme.TitleDate.G, c.theme.TitleDate.B)
 		c.pdf.SetFont("Arial", "I", 12)
 		c.pdf.SetXY(20, 180)
 		c.pdf.MultiCell(257, 6, doc.Time.Format("January 2, 2006"), "", "C", false)
@@ -134,22 +233,22 @@ func (c *Converter) renderSlide(section present.Section) {
 	c.pdf.AddPage()
 
 	// Background
-	c.pdf.SetFillColor(255, 255, 255)
+	c.pdf.SetFillColor(c.theme.SlideBackground.R, c.theme.SlideBackground.G, c.theme.SlideBackground.B)
 	c.pdf.Rect(0, 0, 297, 210, "F")
 
 	// Title
-	c.pdf.SetTextColor(41, 128, 185)
+	c.pdf.SetTextColor(c.theme.SlideTitle.R, c.theme.SlideTitle.G, c.theme.SlideTitle.B)
 	c.pdf.SetFont("Arial", "B", 24)
 	c.pdf.SetXY(20, 15)
 	c.pdf.MultiCell(257, 10, section.Title, "", "L", false)
 
 	// Draw a line under the title
-	c.pdf.SetDrawColor(41, 128, 185)
+	c.pdf.SetDrawColor(c.theme.SlideTitleLine.R, c.theme.SlideTitleLine.G, c.theme.SlideTitleLine.B)
 	c.pdf.SetLineWidth(0.5)
 	c.pdf.Line(20, 30, 277, 30)
 
 	// Content
-	c.pdf.SetTextColor(0, 0, 0)
+	c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
 	y := 40.0
 
 	for _, elem := range section.Elem {
@@ -235,7 +334,7 @@ func (c *Converter) renderCode(code present.Code, y float64) float64 {
 	}
 
 	// Background for code
-	c.pdf.SetFillColor(40, 44, 52) // Dark background like VS Code
+	c.pdf.SetFillColor(c.theme.CodeBackground.R, c.theme.CodeBackground.G, c.theme.CodeBackground.B)
 	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
 
 	// Render lines with syntax highlighting
@@ -243,7 +342,7 @@ func (c *Converter) renderCode(code present.Code, y float64) float64 {
 	maxLines := 12
 	for i, line := range lines {
 		if i >= maxLines {
-			c.pdf.SetTextColor(128, 128, 128)
+			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
 			c.pdf.SetFont("Courier", "", 10)
 			c.pdf.SetXY(25, lineY)
 			c.pdf.Cell(0, 5, "...")
@@ -253,7 +352,7 @@ func (c *Converter) renderCode(code present.Code, y float64) float64 {
 		lineY += 5
 	}
 
-	c.pdf.SetTextColor(0, 0, 0)
+	c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
 	return y + codeHeight + 10
 }
 
@@ -380,7 +479,7 @@ func (c *Converter) renderHTMLCode(html string, y float64) float64 {
 	}
 
 	// Background for code
-	c.pdf.SetFillColor(40, 44, 52) // Dark background
+	c.pdf.SetFillColor(c.theme.CodeBackground.R, c.theme.CodeBackground.G, c.theme.CodeBackground.B)
 	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
 
 	// Render lines with syntax highlighting
@@ -388,7 +487,7 @@ func (c *Converter) renderHTMLCode(html string, y float64) float64 {
 	maxLines := 12
 	for i, line := range lines {
 		if i >= maxLines {
-			c.pdf.SetTextColor(128, 128, 128)
+			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
 			c.pdf.SetFont("Courier", "", 10)
 			c.pdf.SetXY(25, lineY)
 			c.pdf.Cell(0, 5, "...")
@@ -398,7 +497,7 @@ func (c *Converter) renderHTMLCode(html string, y float64) float64 {
 		lineY += 5
 	}
 
-	c.pdf.SetTextColor(0, 0, 0)
+	c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
 	return y + codeHeight + 10
 }
 
@@ -612,7 +711,7 @@ func (c *Converter) renderCodePlain(code string, y float64) float64 {
 	lines := strings.Split(code, "\n")
 
 	// Background for code
-	c.pdf.SetFillColor(40, 44, 52)
+	c.pdf.SetFillColor(c.theme.CodeBackground.R, c.theme.CodeBackground.G, c.theme.CodeBackground.B)
 	codeHeight := float64(len(lines)) * 5
 	if codeHeight > 80 {
 		codeHeight = 80
@@ -622,7 +721,7 @@ func (c *Converter) renderCodePlain(code string, y float64) float64 {
 
 	// Code text
 	c.pdf.SetFont("Courier", "", 10)
-	c.pdf.SetTextColor(171, 178, 191) // Light gray for dark background
+	c.pdf.SetTextColor(c.theme.CodeText.R, c.theme.CodeText.G, c.theme.CodeText.B)
 
 	lineY := y + 2
 	maxLines := 12
@@ -637,6 +736,6 @@ func (c *Converter) renderCodePlain(code string, y float64) float64 {
 		lineY += 5
 	}
 
-	c.pdf.SetTextColor(0, 0, 0)
+	c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
 	return y + codeHeight + 10
 }

@@ -1032,7 +1032,7 @@ func TestGetAvailableStyles(t *testing.T) {
 	t.Logf("Available styles: %v", styles)
 }
 
-func TestNewConverterWithStyle(t *testing.T) {
+func TestNewConverterWithCodeTheme(t *testing.T) {
 	tests := []struct {
 		name      string
 		codeTheme string
@@ -1045,14 +1045,72 @@ func TestNewConverterWithStyle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			conv := NewConverterWithStyle(tt.codeTheme)
+			conv := NewConverter(WithCodeTheme(tt.codeTheme))
 			if conv == nil {
-				t.Error("NewConverterWithStyle() returned nil")
+				t.Error("NewConverter() returned nil")
 			}
 			if conv.codeTheme != tt.codeTheme {
-				t.Errorf("NewConverterWithStyle() codeTheme = %q, want %q", conv.codeTheme, tt.codeTheme)
+				t.Errorf("NewConverter() codeTheme = %q, want %q", conv.codeTheme, tt.codeTheme)
+			}
+			// Should use default light theme
+			if conv.theme != LightTheme {
+				t.Error("NewConverter() should use light theme by default")
 			}
 		})
+	}
+}
+
+func TestNewConverterWithAllOptions(t *testing.T) {
+	tests := []struct {
+		name        string
+		codeTheme   string
+		themeName   string
+		expectTheme Theme
+	}{
+		{"light theme", "monokai", "light", LightTheme},
+		{"dark theme", "github", "dark", DarkTheme},
+		{"unknown theme defaults to light", "monokai", "unknown", LightTheme},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conv := NewConverter(WithCodeTheme(tt.codeTheme), WithTheme(tt.themeName))
+			if conv == nil {
+				t.Error("NewConverter() returned nil")
+			}
+			if conv.codeTheme != tt.codeTheme {
+				t.Errorf("NewConverter() codeTheme = %q, want %q", conv.codeTheme, tt.codeTheme)
+			}
+			if conv.theme != tt.expectTheme {
+				t.Errorf("NewConverter() theme mismatch")
+			}
+		})
+	}
+}
+
+func TestGetAvailableThemes(t *testing.T) {
+	themes := GetAvailableThemes()
+	if len(themes) == 0 {
+		t.Error("GetAvailableThemes() returned empty list")
+	}
+
+	// Check that light and dark themes are available
+	hasLight := false
+	hasDark := false
+	for _, theme := range themes {
+		if theme == "light" {
+			hasLight = true
+		}
+		if theme == "dark" {
+			hasDark = true
+		}
+	}
+
+	if !hasLight {
+		t.Error("GetAvailableThemes() should include 'light' theme")
+	}
+	if !hasDark {
+		t.Error("GetAvailableThemes() should include 'dark' theme")
 	}
 }
 
@@ -1093,7 +1151,7 @@ Author
 			outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
 			defer os.Remove(outputPath)
 
-			conv := NewConverterWithStyle(codeTheme)
+			conv := NewConverter(WithCodeTheme(codeTheme))
 			err = conv.Convert(tmpFile.Name(), outputPath)
 			if err != nil {
 				t.Errorf("Convert() failed for style %s: %v", codeTheme, err)
@@ -1106,6 +1164,66 @@ Author
 			}
 			if info.Size() < 1024 {
 				t.Errorf("PDF file too small for style %s: %d bytes", codeTheme, info.Size())
+			}
+		})
+	}
+}
+
+func TestRenderWithDifferentPDFThemes(t *testing.T) {
+	// Test rendering with different PDF themes
+	slideContent := `# Theme Test
+Test Presentation
+16 Feb 2026
+
+## Introduction
+
+This is a test presentation to verify PDF themes.
+
+## Code Example
+
+Example code:
+
+	package main
+
+	func main() {
+		fmt.Println("Hello, World!")
+	}
+
+## Conclusion
+
+Different themes should have different colors.
+`
+
+	themes := []string{"light", "dark"}
+
+	for _, themeName := range themes {
+		t.Run(themeName, func(t *testing.T) {
+			tmpFile, err := os.CreateTemp("", "theme-*.slide")
+			if err != nil {
+				t.Fatalf("Failed to create temp file: %v", err)
+			}
+			defer os.Remove(tmpFile.Name())
+
+			if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+				t.Fatalf("Failed to write temp file: %v", err)
+			}
+			tmpFile.Close()
+
+			outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+			defer os.Remove(outputPath)
+
+			conv := NewConverter(WithCodeTheme("monokai"), WithTheme(themeName))
+			err = conv.Convert(tmpFile.Name(), outputPath)
+			if err != nil {
+				t.Errorf("Convert() failed for theme %s: %v", themeName, err)
+			}
+
+			// Check if output file exists
+			info, err := os.Stat(outputPath)
+			if os.IsNotExist(err) {
+				t.Errorf("Output PDF file was not created for theme %s", themeName)
+			} else if info.Size() < 1024 {
+				t.Errorf("PDF file too small for theme %s: %d bytes", themeName, info.Size())
 			}
 		})
 	}
