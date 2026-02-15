@@ -7,6 +7,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/jung-kurt/gofpdf"
 	"golang.org/x/tools/present"
 )
@@ -14,6 +17,13 @@ import (
 // Converter handles conversion from .slide to PDF
 type Converter struct {
 	pdf *gofpdf.Fpdf
+}
+
+// Token represents a syntax-highlighted token
+type Token struct {
+	Type  chroma.TokenType
+	Value string
+	Color [3]int // RGB color
 }
 
 // NewConverter creates a new converter instance
@@ -185,31 +195,46 @@ func (c *Converter) renderList(list present.List, y float64) float64 {
 // renderCode renders code block
 func (c *Converter) renderCode(code present.Code, y float64) float64 {
 	// Extract code lines from Raw content
-	lines := strings.Split(string(code.Raw), "\n")
+	codeText := string(code.Raw)
 
-	// Background for code
-	c.pdf.SetFillColor(240, 240, 240)
+	// Detect language from filename if available
+	language := "go" // default to Go
+	if code.FileName != "" {
+		language = detectLanguage(code.FileName)
+	}
+
+	// Highlight the code
+	tokens, err := highlightCode(codeText, language)
+	if err != nil {
+		// Fallback to plain rendering if highlighting fails
+		return c.renderCodePlain(codeText, y)
+	}
+
+	// Split tokens into lines
+	lines := splitTokensIntoLines(tokens)
+
+	// Calculate code block height
 	codeHeight := float64(len(lines)) * 5
 	if codeHeight > 80 {
 		codeHeight = 80
 	}
 
+	// Background for code
+	c.pdf.SetFillColor(40, 44, 52) // Dark background like VS Code
 	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
 
-	// Code text
-	c.pdf.SetFont("Courier", "", 10)
-	c.pdf.SetTextColor(0, 0, 0)
-
+	// Render lines with syntax highlighting
 	lineY := y + 2
 	maxLines := 12
 	for i, line := range lines {
 		if i >= maxLines {
+			c.pdf.SetTextColor(128, 128, 128)
+			c.pdf.SetFont("Courier", "", 10)
 			c.pdf.SetXY(25, lineY)
 			c.pdf.Cell(0, 5, "...")
 			break
 		}
-		c.pdf.SetXY(25, lineY)
-		c.pdf.Cell(0, 5, line)
+		c.renderHighlightedLine(line, 25, lineY)
 		lineY += 5
 	}
 
@@ -302,41 +327,59 @@ func (c *Converter) renderHTMLList(html string, y float64) float64 {
 
 // renderHTMLCode renders HTML code block
 func (c *Converter) renderHTMLCode(html string, y float64) float64 {
-	// Extract code content
-	re := regexp.MustCompile(`<pre><code>(.*?)</code></pre>`)
+	// Extract code content - use (?s) flag to make . match newlines
+	re := regexp.MustCompile(`(?s)<pre><code>(.*?)</code></pre>`)
 	match := re.FindStringSubmatch(html)
 
 	if len(match) < 2 {
 		return y
 	}
 
-	code := match[1]
-	code = strings.TrimSpace(code)
-	lines := strings.Split(code, "\n")
+	codeText := match[1]
+	codeText = strings.TrimSpace(codeText)
 
-	// Background for code
-	c.pdf.SetFillColor(240, 240, 240)
+	// Decode HTML entities (e.g., &quot; -> ", &lt; -> <, etc.)
+	codeText = decodeHTMLEntities(codeText)
+
+	// Try to detect language from class attribute
+	language := "go" // default
+	classRe := regexp.MustCompile(`<code class="language-(\w+)">`)
+	if classMatch := classRe.FindStringSubmatch(html); len(classMatch) > 1 {
+		language = classMatch[1]
+	}
+
+	// Highlight the code
+	tokens, err := highlightCode(codeText, language)
+	if err != nil {
+		// Fallback to plain rendering
+		return c.renderCodePlain(codeText, y)
+	}
+
+	// Split tokens into lines
+	lines := splitTokensIntoLines(tokens)
+
+	// Calculate code block height
 	codeHeight := float64(len(lines)) * 5
 	if codeHeight > 80 {
 		codeHeight = 80
 	}
 
+	// Background for code
+	c.pdf.SetFillColor(40, 44, 52) // Dark background
 	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
 
-	// Code text
-	c.pdf.SetFont("Courier", "", 10)
-	c.pdf.SetTextColor(0, 0, 0)
-
+	// Render lines with syntax highlighting
 	lineY := y + 2
 	maxLines := 12
 	for i, line := range lines {
 		if i >= maxLines {
+			c.pdf.SetTextColor(128, 128, 128)
+			c.pdf.SetFont("Courier", "", 10)
 			c.pdf.SetXY(25, lineY)
 			c.pdf.Cell(0, 5, "...")
 			break
 		}
-		c.pdf.SetXY(25, lineY)
-		c.pdf.Cell(0, 5, line)
+		c.renderHighlightedLine(line, 25, lineY)
 		lineY += 5
 	}
 
@@ -367,11 +410,218 @@ func stripHTMLTags(html string) string {
 	text := re.ReplaceAllString(html, "")
 
 	// Decode HTML entities
+	text = decodeHTMLEntities(text)
+
+	return text
+}
+
+// decodeHTMLEntities decodes common HTML entities
+func decodeHTMLEntities(text string) string {
 	text = strings.ReplaceAll(text, "&lt;", "<")
 	text = strings.ReplaceAll(text, "&gt;", ">")
 	text = strings.ReplaceAll(text, "&amp;", "&")
 	text = strings.ReplaceAll(text, "&quot;", "\"")
 	text = strings.ReplaceAll(text, "&#39;", "'")
-
+	text = strings.ReplaceAll(text, "&#34;", "\"")
+	text = strings.ReplaceAll(text, "&apos;", "'")
 	return text
+}
+
+// highlightCode performs syntax highlighting on code
+func highlightCode(code, language string) ([]Token, error) {
+	// Get lexer for the language
+	lexer := lexers.Get(language)
+	if lexer == nil {
+		lexer = lexers.Fallback
+	}
+	lexer = chroma.Coalesce(lexer)
+
+	// Get style
+	style := styles.Get("monokai")
+	if style == nil {
+		style = styles.Fallback
+	}
+
+	// Tokenize
+	iterator, err := lexer.Tokenise(nil, code)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to our Token format with colors
+	var tokens []Token
+	for _, token := range iterator.Tokens() {
+		color := getTokenColor(token.Type, style)
+		tokens = append(tokens, Token{
+			Type:  token.Type,
+			Value: token.Value,
+			Color: color,
+		})
+	}
+
+	return tokens, nil
+}
+
+// getTokenColor returns RGB color for a token type based on style
+func getTokenColor(tokenType chroma.TokenType, style *chroma.Style) [3]int {
+	entry := style.Get(tokenType)
+
+	// Default color (light gray for dark background)
+	defaultColor := [3]int{171, 178, 191}
+
+	if entry.Colour.IsSet() {
+		r, g, b := entry.Colour.Red(), entry.Colour.Green(), entry.Colour.Blue()
+		return [3]int{int(r), int(g), int(b)}
+	}
+
+	// Return color based on token type for common cases
+	switch tokenType {
+	case chroma.Keyword, chroma.KeywordNamespace, chroma.KeywordType:
+		return [3]int{198, 120, 221} // Purple
+	case chroma.String, chroma.StringDouble, chroma.StringSingle:
+		return [3]int{152, 195, 121} // Green
+	case chroma.Comment, chroma.CommentSingle, chroma.CommentMultiline:
+		return [3]int{92, 99, 112} // Gray
+	case chroma.Name, chroma.NameFunction:
+		return [3]int{97, 175, 239} // Blue
+	case chroma.LiteralNumber, chroma.LiteralNumberInteger, chroma.LiteralNumberFloat:
+		return [3]int{209, 154, 102} // Orange
+	case chroma.Operator:
+		return [3]int{198, 120, 221} // Purple
+	case chroma.NameBuiltin, chroma.NameClass:
+		return [3]int{229, 192, 123} // Yellow
+	default:
+		return defaultColor
+	}
+}
+
+// splitTokensIntoLines splits tokens into lines
+func splitTokensIntoLines(tokens []Token) [][]Token {
+	if len(tokens) == 0 {
+		return [][]Token{}
+	}
+
+	var lines [][]Token
+	var currentLine []Token
+
+	for _, token := range tokens {
+		parts := strings.Split(token.Value, "\n")
+		for i, part := range parts {
+			if i > 0 {
+				// New line encountered - append current line (even if empty)
+				lines = append(lines, currentLine)
+				currentLine = nil
+			}
+			if part != "" {
+				currentLine = append(currentLine, Token{
+					Type:  token.Type,
+					Value: part,
+					Color: token.Color,
+				})
+			}
+		}
+	}
+
+	// Add the last line
+	lines = append(lines, currentLine)
+
+	return lines
+}
+
+// renderHighlightedLine renders a line of syntax-highlighted tokens
+func (c *Converter) renderHighlightedLine(tokens []Token, x, y float64) {
+	currentX := x
+	c.pdf.SetFont("Courier", "", 10)
+
+	for _, token := range tokens {
+		c.pdf.SetTextColor(token.Color[0], token.Color[1], token.Color[2])
+		c.pdf.SetXY(currentX, y)
+
+		// Get width of the text to advance X position
+		width := c.pdf.GetStringWidth(token.Value)
+		c.pdf.Cell(width, 5, token.Value)
+
+		currentX += width
+	}
+}
+
+// detectLanguage detects programming language from filename
+func detectLanguage(filename string) string {
+	ext := ""
+	if idx := strings.LastIndex(filename, "."); idx != -1 {
+		ext = filename[idx+1:]
+	}
+
+	switch ext {
+	case "go":
+		return "go"
+	case "py":
+		return "python"
+	case "js":
+		return "javascript"
+	case "ts":
+		return "typescript"
+	case "java":
+		return "java"
+	case "c":
+		return "c"
+	case "cpp", "cc", "cxx":
+		return "cpp"
+	case "rs":
+		return "rust"
+	case "rb":
+		return "ruby"
+	case "php":
+		return "php"
+	case "sh", "bash":
+		return "bash"
+	case "html":
+		return "html"
+	case "css":
+		return "css"
+	case "json":
+		return "json"
+	case "xml":
+		return "xml"
+	case "yaml", "yml":
+		return "yaml"
+	case "sql":
+		return "sql"
+	default:
+		return "go" // default to Go
+	}
+}
+
+// renderCodePlain renders code without syntax highlighting (fallback)
+func (c *Converter) renderCodePlain(code string, y float64) float64 {
+	lines := strings.Split(code, "\n")
+
+	// Background for code
+	c.pdf.SetFillColor(40, 44, 52)
+	codeHeight := float64(len(lines)) * 5
+	if codeHeight > 80 {
+		codeHeight = 80
+	}
+
+	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
+
+	// Code text
+	c.pdf.SetFont("Courier", "", 10)
+	c.pdf.SetTextColor(171, 178, 191) // Light gray for dark background
+
+	lineY := y + 2
+	maxLines := 12
+	for i, line := range lines {
+		if i >= maxLines {
+			c.pdf.SetXY(25, lineY)
+			c.pdf.Cell(0, 5, "...")
+			break
+		}
+		c.pdf.SetXY(25, lineY)
+		c.pdf.Cell(0, 5, line)
+		lineY += 5
+	}
+
+	c.pdf.SetTextColor(0, 0, 0)
+	return y + codeHeight + 10
 }

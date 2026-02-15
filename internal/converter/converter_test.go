@@ -2,9 +2,13 @@ package converter
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/jung-kurt/gofpdf"
 	"golang.org/x/tools/present"
 )
 
@@ -484,5 +488,521 @@ Final slide.
 	}
 	if info.Size() < 2048 {
 		t.Errorf("PDF file too small for multi-section presentation: %d bytes", info.Size())
+	}
+}
+
+func TestHighlightCode(t *testing.T) {
+	tests := []struct {
+		name     string
+		code     string
+		language string
+		wantErr  bool
+	}{
+		{
+			name: "simple go code",
+			code: `package main
+
+func main() {
+	fmt.Println("Hello")
+}`,
+			language: "go",
+			wantErr:  false,
+		},
+		{
+			name:     "empty code",
+			code:     "",
+			language: "go",
+			wantErr:  false,
+		},
+		{
+			name:     "single line",
+			code:     `fmt.Println("test")`,
+			language: "go",
+			wantErr:  false,
+		},
+		{
+			name: "python code",
+			code: `def hello():
+    print("Hello")`,
+			language: "python",
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens, err := highlightCode(tt.code, tt.language)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("highlightCode() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && len(tokens) == 0 && tt.code != "" {
+				t.Errorf("highlightCode() returned empty tokens for non-empty code")
+			}
+		})
+	}
+}
+
+func TestSplitTokensIntoLines(t *testing.T) {
+	tests := []struct {
+		name      string
+		tokens    []Token
+		wantLines int
+	}{
+		{
+			name: "single line",
+			tokens: []Token{
+				{Value: "package", Color: [3]int{198, 120, 221}},
+				{Value: " ", Color: [3]int{171, 178, 191}},
+				{Value: "main", Color: [3]int{171, 178, 191}},
+			},
+			wantLines: 1,
+		},
+		{
+			name: "multiple lines",
+			tokens: []Token{
+				{Value: "package", Color: [3]int{198, 120, 221}},
+				{Value: " ", Color: [3]int{171, 178, 191}},
+				{Value: "main", Color: [3]int{171, 178, 191}},
+				{Value: "\n", Color: [3]int{171, 178, 191}},
+				{Value: "func", Color: [3]int{198, 120, 221}},
+				{Value: " ", Color: [3]int{171, 178, 191}},
+				{Value: "main", Color: [3]int{171, 178, 191}},
+			},
+			wantLines: 2,
+		},
+		{
+			name: "empty lines",
+			tokens: []Token{
+				{Value: "line1", Color: [3]int{171, 178, 191}},
+				{Value: "\n\n", Color: [3]int{171, 178, 191}},
+				{Value: "line3", Color: [3]int{171, 178, 191}},
+			},
+			wantLines: 3,
+		},
+		{
+			name:      "empty tokens",
+			tokens:    []Token{},
+			wantLines: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines := splitTokensIntoLines(tt.tokens)
+			if len(lines) != tt.wantLines {
+				t.Errorf("splitTokensIntoLines() got %d lines, want %d lines", len(lines), tt.wantLines)
+			}
+		})
+	}
+}
+
+func TestDetectLanguage(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		want     string
+	}{
+		{"go file", "main.go", "go"},
+		{"python file", "script.py", "python"},
+		{"javascript file", "app.js", "javascript"},
+		{"typescript file", "app.ts", "typescript"},
+		{"c file", "program.c", "c"},
+		{"cpp file", "program.cpp", "cpp"},
+		{"rust file", "main.rs", "rust"},
+		{"no extension", "README", "go"},
+		{"empty filename", "", "go"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectLanguage(tt.filename)
+			if got != tt.want {
+				t.Errorf("detectLanguage(%q) = %q, want %q", tt.filename, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRenderCodeWithSyntaxHighlighting(t *testing.T) {
+	// Test that code rendering with syntax highlighting works
+	slideContent := `# Syntax Highlighting Test
+Test Code Rendering
+15 Feb 2026
+
+Test Author
+
+## Go Code
+
+Simple Go example:
+
+	package main
+	
+	import "fmt"
+	
+	func main() {
+		fmt.Println("Hello, World!")
+	}
+
+## Python Code
+
+Python example:
+
+	def greet(name):
+		return f"Hello, {name}!"
+	
+	print(greet("World"))
+`
+
+	tmpFile, err := os.CreateTemp("", "syntax-*.slide")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	err = conv.Convert(tmpFile.Name(), outputPath)
+	if err != nil {
+		t.Errorf("Convert() failed for syntax highlighting: %v", err)
+	}
+
+	// Check if output file exists and has reasonable size
+	info, err := os.Stat(outputPath)
+	if os.IsNotExist(err) {
+		t.Errorf("Output PDF file was not created")
+	}
+	if info.Size() < 2048 {
+		t.Errorf("PDF file too small: %d bytes (expected > 2048)", info.Size())
+	}
+}
+
+func TestRenderCodePlain(t *testing.T) {
+	// Test fallback to plain rendering
+	conv := NewConverter()
+	conv.pdf = gofpdf.New("L", "mm", "A4", "")
+	conv.pdf.AddPage()
+
+	y := conv.renderCodePlain("test code\nline 2", 40.0)
+
+	if y <= 40.0 {
+		t.Errorf("renderCodePlain() did not advance Y position")
+	}
+}
+
+func TestHighlightCodeDebug(t *testing.T) {
+	// Debug test to see what tokens are generated
+	code := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello")
+}`
+
+	tokens, err := highlightCode(code, "go")
+	if err != nil {
+		t.Fatalf("highlightCode() error = %v", err)
+	}
+
+	t.Logf("Total tokens: %d", len(tokens))
+	for i, token := range tokens {
+		t.Logf("Token %d: Type=%v, Value=%q, Color=%v", i, token.Type, token.Value, token.Color)
+	}
+
+	lines := splitTokensIntoLines(tokens)
+	t.Logf("Total lines: %d", len(lines))
+	for i, line := range lines {
+		t.Logf("Line %d: %d tokens", i, len(line))
+		for j, token := range line {
+			t.Logf("  Token %d: %q", j, token.Value)
+		}
+	}
+}
+
+func TestGetTokenColor(t *testing.T) {
+	// Test that getTokenColor returns valid RGB values
+	style := styles.Get("monokai")
+	if style == nil {
+		style = styles.Fallback
+	}
+
+	tests := []chroma.TokenType{
+		chroma.Keyword,
+		chroma.String,
+		chroma.Comment,
+		chroma.Name,
+		chroma.LiteralNumber,
+		chroma.Operator,
+		chroma.NameBuiltin,
+	}
+
+	for _, tokenType := range tests {
+		color := getTokenColor(tokenType, style)
+		// Check that RGB values are in valid range
+		if color[0] < 0 || color[0] > 255 ||
+			color[1] < 0 || color[1] > 255 ||
+			color[2] < 0 || color[2] > 255 {
+			t.Errorf("getTokenColor() returned invalid RGB: %v for type %v", color, tokenType)
+		}
+	}
+}
+
+func TestRenderCodeWithEmptyLines(t *testing.T) {
+	// Test code with empty lines
+	slideContent := `# Empty Lines Test
+Test
+16 Feb 2026
+
+Author
+
+## Code with Empty Lines
+
+	line1
+	
+	line3
+	
+	
+	line6
+`
+
+	tmpFile, err := os.CreateTemp("", "empty-*.slide")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	err = conv.Convert(tmpFile.Name(), outputPath)
+	if err != nil {
+		t.Errorf("Convert() failed for code with empty lines: %v", err)
+	}
+
+	// Check if output file exists
+	info, err := os.Stat(outputPath)
+	if os.IsNotExist(err) {
+		t.Errorf("Output PDF file was not created")
+	}
+	if info.Size() < 1024 {
+		t.Errorf("PDF file too small: %d bytes", info.Size())
+	}
+}
+
+func TestRenderCodeWithSpecialCharacters(t *testing.T) {
+	// Test code with special characters
+	slideContent := `# Special Characters Test
+Test
+16 Feb 2026
+
+Author
+
+## Code with Special Chars
+
+	str := "Hello \"World\""
+	regex := /\d+/
+	path := C:\Users\test
+	arrow := ->
+`
+
+	tmpFile, err := os.CreateTemp("", "special-*.slide")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	err = conv.Convert(tmpFile.Name(), outputPath)
+	if err != nil {
+		t.Errorf("Convert() failed for code with special characters: %v", err)
+	}
+
+	// Check if output file exists
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		t.Errorf("Output PDF file was not created")
+	}
+}
+
+func TestRenderCodeWithLongLines(t *testing.T) {
+	// Test code with very long lines
+	slideContent := `# Long Lines Test
+Test
+16 Feb 2026
+
+Author
+
+## Code with Long Line
+
+	verylongvariablename := "This is a very long string that should be handled properly by the PDF renderer without causing issues"
+`
+
+	tmpFile, err := os.CreateTemp("", "longline-*.slide")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	err = conv.Convert(tmpFile.Name(), outputPath)
+	if err != nil {
+		t.Errorf("Convert() failed for code with long lines: %v", err)
+	}
+
+	// Check if output file exists
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		t.Errorf("Output PDF file was not created")
+	}
+}
+
+func TestHTMLCodeRegexMultiline(t *testing.T) {
+	// Test that regex properly captures multiline code
+	html := `<pre><code>line1
+line2
+line3</code></pre>`
+
+	re := regexp.MustCompile(`(?s)<pre><code>(.*?)</code></pre>`)
+	match := re.FindStringSubmatch(html)
+
+	if len(match) < 2 {
+		t.Fatal("Regex didn't match multiline HTML code")
+	}
+
+	expected := "line1\nline2\nline3"
+	actual := strings.TrimSpace(match[1])
+
+	if actual != expected {
+		t.Errorf("Regex extracted %q, want %q", actual, expected)
+	}
+}
+
+func TestDecodeHTMLEntities(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "double quotes",
+			input:    `fmt.Println(&quot;Hello&quot;)`,
+			expected: `fmt.Println("Hello")`,
+		},
+		{
+			name:     "less than and greater than",
+			input:    `if x &lt; 10 &amp;&amp; y &gt; 5`,
+			expected: `if x < 10 && y > 5`,
+		},
+		{
+			name:     "ampersand",
+			input:    `a &amp; b`,
+			expected: `a & b`,
+		},
+		{
+			name:     "single quote",
+			input:    `char c = &#39;x&#39;`,
+			expected: `char c = 'x'`,
+		},
+		{
+			name:     "numeric quote",
+			input:    `str := &#34;test&#34;`,
+			expected: `str := "test"`,
+		},
+		{
+			name:     "apostrophe",
+			input:    `don&apos;t`,
+			expected: `don't`,
+		},
+		{
+			name:     "mixed entities",
+			input:    `fmt.Printf(&quot;x &lt; %d&quot;, &amp;val)`,
+			expected: `fmt.Printf("x < %d", &val)`,
+		},
+		{
+			name:     "no entities",
+			input:    `fmt.Println("test")`,
+			expected: `fmt.Println("test")`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := decodeHTMLEntities(tt.input)
+			if result != tt.expected {
+				t.Errorf("decodeHTMLEntities(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestRenderCodeWithHTMLEntities(t *testing.T) {
+	// Test that HTML entities are properly decoded in code blocks
+	slideContent := `# HTML Entities Test
+Test
+16 Feb 2026
+
+Author
+
+## Code with Quotes
+
+	str := "Hello World"
+	fmt.Printf("Value: %d", 42)
+`
+
+	tmpFile, err := os.CreateTemp("", "entities-*.slide")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	err = conv.Convert(tmpFile.Name(), outputPath)
+	if err != nil {
+		t.Errorf("Convert() failed for code with HTML entities: %v", err)
+	}
+
+	// Check if output file exists and has reasonable size
+	info, err := os.Stat(outputPath)
+	if os.IsNotExist(err) {
+		t.Errorf("Output PDF file was not created")
+	}
+	if info.Size() < 1024 {
+		t.Errorf("PDF file too small: %d bytes", info.Size())
 	}
 }

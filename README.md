@@ -7,7 +7,7 @@ A command-line application in Go for converting presentations from `.slide` form
 - ✅ Convert .slide files to PDF
 - ✅ Support for headers and text
 - ✅ Bulleted lists
-- ✅ Code blocks with formatting
+- ✅ Code blocks with syntax highlighting
 - ✅ Author and date information
 - ✅ Beautiful slide design
 - ✅ Simple command-line interface
@@ -114,15 +114,18 @@ More content here.
 
 For detailed format documentation, see [PRESENT_FORMAT.md](PRESENT_FORMAT.md).
 
+For syntax highlighting details, see [SYNTAX_HIGHLIGHTING.md](SYNTAX_HIGHLIGHTING.md).
+
 ## Examples
 
-The project includes a comprehensive example in the `example/` directory:
+The project includes comprehensive examples in the `example/` directory:
 
 - `example/presentation.slide` - full demonstration of all Markdown features
 
-Convert it:
+Convert them:
 
 ```bash
+# Convert main example
 ./present2pdf -input example/presentation.slide
 # or
 make example
@@ -133,12 +136,37 @@ make example
 - ✅ Slide titles
 - ✅ Text blocks
 - ✅ Bulleted lists
-- ✅ Code blocks
+- ✅ Code blocks with syntax highlighting
 - ✅ Author information
 - ✅ Dates
 - ⚠️ Images (planned)
 - ⚠️ Links (planned)
 - ⚠️ Videos (planned)
+
+### Syntax Highlighting
+
+Code blocks in your slides are automatically highlighted with proper syntax colors. The tool supports:
+
+- **Automatic language detection** from file extensions in code blocks
+- **Multiple languages**: Go, Python, JavaScript, TypeScript, Java, C, C++, Rust, Ruby, PHP, Bash, HTML, CSS, JSON, XML, YAML, SQL, and more
+- **Monokai color scheme** with dark background for better readability
+- **Fallback to plain rendering** if highlighting fails
+
+Example code block:
+
+```
+## Code Example
+
+	package main
+
+	import "fmt"
+
+	func main() {
+		fmt.Println("Hello, World!")
+	}
+```
+
+The code will be rendered with syntax highlighting in the PDF output.
 
 ## Project Structure
 
@@ -163,18 +191,19 @@ present2pdf/
 
 - `golang.org/x/tools/present` - .slide format parsing
 - `github.com/jung-kurt/gofpdf` - PDF generation
+- `github.com/alecthomas/chroma/v2` - Syntax highlighting
 
 ## Makefile Commands
 
 ```bash
-make build    # Build the application
-make deps     # Install dependencies
-make clean    # Remove built files and PDFs
-make example  # Build and run on example
-make install  # Install to system
-make fmt      # Format code
-make vet      # Check code
-make test     # Run tests
+make build          # Build the application
+make deps           # Install dependencies
+make clean          # Remove built files and PDFs
+make example        # Build and run on example
+make install        # Install to system
+make fmt            # Format code
+make vet            # Check code
+make test           # Run tests
 ```
 
 ## Testing

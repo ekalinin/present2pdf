@@ -1,8 +1,8 @@
-# Presentation Example
+# Presentation Examples
 
-This directory contains an example `.slide` file to demonstrate the capabilities of `present2pdf`.
+This directory contains example `.slide` files to demonstrate the capabilities of `present2pdf`.
 
-## File
+## Files
 
 ### presentation.slide
 Comprehensive presentation demonstrating all Markdown features:
@@ -21,24 +21,26 @@ Comprehensive presentation demonstrating all Markdown features:
 From the project root directory, run:
 
 ```bash
-# Convert the presentation
+# Convert the main presentation
 ./present2pdf -input example/presentation.slide -output example/presentation.pdf
 
-# Or use Makefile (converts example by default)
+# Or use Makefile
 make example
 ```
 
-## Result
+## Results
 
-After conversion, the following file will appear in this directory:
+After conversion, the following files will appear in this directory:
 - `presentation.pdf` - result of converting presentation.slide
+- `syntax_highlight_demo.pdf` - result of converting syntax_highlight_demo.slide
 
-The PDF file is ignored by git (see `.gitignore`).
+PDF files are ignored by git (see `.gitignore`).
 
 ## Format
 
-This presentation uses the **Markdown-enabled present** format with CommonMark syntax.
-See [PRESENT_FORMAT.md](../PRESENT_FORMAT.md) for format details.
+These presentations use the **Markdown-enabled present** format with CommonMark syntax.
 
-
+See:
+- [PRESENT_FORMAT.md](../PRESENT_FORMAT.md) for format details
+- [SYNTAX_HIGHLIGHTING.md](../SYNTAX_HIGHLIGHTING.md) for syntax highlighting details
 
