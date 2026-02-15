@@ -16,7 +16,8 @@ import (
 
 // Converter handles conversion from .slide to PDF
 type Converter struct {
-	pdf *gofpdf.Fpdf
+	pdf       *gofpdf.Fpdf
+	styleName string // Name of the syntax highlighting style
 }
 
 // Token represents a syntax-highlighted token
@@ -28,7 +29,21 @@ type Token struct {
 
 // NewConverter creates a new converter instance
 func NewConverter() *Converter {
-	return &Converter{}
+	return &Converter{
+		styleName: "monokai", // default style
+	}
+}
+
+// NewConverterWithStyle creates a new converter instance with specified style
+func NewConverterWithStyle(styleName string) *Converter {
+	return &Converter{
+		styleName: styleName,
+	}
+}
+
+// GetAvailableStyles returns a list of available syntax highlighting styles
+func GetAvailableStyles() []string {
+	return styles.Names()
 }
 
 // Convert converts a .slide file to PDF
@@ -204,7 +219,7 @@ func (c *Converter) renderCode(code present.Code, y float64) float64 {
 	}
 
 	// Highlight the code
-	tokens, err := highlightCode(codeText, language)
+	tokens, err := c.highlightCode(codeText, language)
 	if err != nil {
 		// Fallback to plain rendering if highlighting fails
 		return c.renderCodePlain(codeText, y)
@@ -349,7 +364,7 @@ func (c *Converter) renderHTMLCode(html string, y float64) float64 {
 	}
 
 	// Highlight the code
-	tokens, err := highlightCode(codeText, language)
+	tokens, err := c.highlightCode(codeText, language)
 	if err != nil {
 		// Fallback to plain rendering
 		return c.renderCodePlain(codeText, y)
@@ -428,7 +443,7 @@ func decodeHTMLEntities(text string) string {
 }
 
 // highlightCode performs syntax highlighting on code
-func highlightCode(code, language string) ([]Token, error) {
+func (c *Converter) highlightCode(code, language string) ([]Token, error) {
 	// Get lexer for the language
 	lexer := lexers.Get(language)
 	if lexer == nil {
@@ -437,7 +452,7 @@ func highlightCode(code, language string) ([]Token, error) {
 	lexer = chroma.Coalesce(lexer)
 
 	// Get style
-	style := styles.Get("monokai")
+	style := styles.Get(c.styleName)
 	if style == nil {
 		style = styles.Fallback
 	}

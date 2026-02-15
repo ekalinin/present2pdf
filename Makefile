@@ -1,4 +1,4 @@
-.PHONY: build clean test install example demo-highlight
+.PHONY: build clean test install example
 
 # Build application
 build:
@@ -18,11 +18,6 @@ clean:
 example: build
 	./present2pdf -input example/presentation.slide -output example/presentation.pdf
 	@echo "PDF created: example/presentation.pdf"
-
-# Generate syntax highlighting demo
-demo-highlight: build
-	./present2pdf -input example/syntax_highlight_demo.slide -output example/syntax_highlight_demo.pdf
-	@echo "PDF created: example/syntax_highlight_demo.pdf"
 
 # Install to system
 install:

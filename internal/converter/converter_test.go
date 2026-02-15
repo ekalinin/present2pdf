@@ -531,7 +531,8 @@ func main() {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tokens, err := highlightCode(tt.code, tt.language)
+			conv := NewConverter()
+			tokens, err := conv.highlightCode(tt.code, tt.language)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("highlightCode() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -707,7 +708,8 @@ func main() {
 	fmt.Println("Hello")
 }`
 
-	tokens, err := highlightCode(code, "go")
+	conv := NewConverter()
+	tokens, err := conv.highlightCode(code, "go")
 	if err != nil {
 		t.Fatalf("highlightCode() error = %v", err)
 	}
@@ -1004,5 +1006,107 @@ Author
 	}
 	if info.Size() < 1024 {
 		t.Errorf("PDF file too small: %d bytes", info.Size())
+	}
+}
+
+func TestGetAvailableStyles(t *testing.T) {
+	styles := GetAvailableStyles()
+
+	if len(styles) == 0 {
+		t.Error("GetAvailableStyles() returned empty list")
+	}
+
+	// Check for some common styles
+	hasMonokai := false
+	for _, style := range styles {
+		if style == "monokai" {
+			hasMonokai = true
+			break
+		}
+	}
+
+	if !hasMonokai {
+		t.Error("GetAvailableStyles() should include 'monokai' style")
+	}
+
+	t.Logf("Available styles: %v", styles)
+}
+
+func TestNewConverterWithStyle(t *testing.T) {
+	tests := []struct {
+		name      string
+		styleName string
+	}{
+		{"monokai style", "monokai"},
+		{"github style", "github"},
+		{"dracula style", "dracula"},
+		{"vim style", "vim"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conv := NewConverterWithStyle(tt.styleName)
+			if conv == nil {
+				t.Error("NewConverterWithStyle() returned nil")
+			}
+			if conv.styleName != tt.styleName {
+				t.Errorf("NewConverterWithStyle() styleName = %q, want %q", conv.styleName, tt.styleName)
+			}
+		})
+	}
+}
+
+func TestRenderCodeWithDifferentStyles(t *testing.T) {
+	// Test rendering with different styles
+	slideContent := `# Style Test
+Test
+16 Feb 2026
+
+Author
+
+## Go Code
+
+	package main
+	
+	import "fmt"
+	
+	func main() {
+		fmt.Println("Hello")
+	}
+`
+
+	styles := []string{"monokai", "github", "dracula"}
+
+	for _, styleName := range styles {
+		t.Run(styleName, func(t *testing.T) {
+			tmpFile, err := os.CreateTemp("", "style-*.slide")
+			if err != nil {
+				t.Fatalf("Failed to create temp file: %v", err)
+			}
+			defer os.Remove(tmpFile.Name())
+
+			if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+				t.Fatalf("Failed to write temp file: %v", err)
+			}
+			tmpFile.Close()
+
+			outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+			defer os.Remove(outputPath)
+
+			conv := NewConverterWithStyle(styleName)
+			err = conv.Convert(tmpFile.Name(), outputPath)
+			if err != nil {
+				t.Errorf("Convert() failed for style %s: %v", styleName, err)
+			}
+
+			// Check if output file exists
+			info, err := os.Stat(outputPath)
+			if os.IsNotExist(err) {
+				t.Errorf("Output PDF file was not created for style %s", styleName)
+			}
+			if info.Size() < 1024 {
+				t.Errorf("PDF file too small for style %s: %d bytes", styleName, info.Size())
+			}
+		})
 	}
 }

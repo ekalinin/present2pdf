@@ -36,6 +36,12 @@ go build -o present2pdf ./cmd/present2pdf
 # With output file specified
 ./present2pdf -input presentation.slide -output output.pdf
 
+# With custom code highlighting theme
+./present2pdf -input presentation.slide -code-theme dracula
+
+# List available themes
+./present2pdf -list-code-themes
+
 # Use Makefile for example
 make example
 ```
@@ -44,6 +50,8 @@ make example
 
 - `-input` - path to input .slide file (required)
 - `-output` - path to output PDF file (optional, defaults to input filename with .pdf extension)
+- `-code-theme` - code syntax highlighting theme (optional, default: `monokai`)
+- `-list-code-themes` - list all available code highlighting themes and exit
 - `-h` - show help
 
 ## .slide File Format
@@ -114,8 +122,6 @@ More content here.
 
 For detailed format documentation, see [PRESENT_FORMAT.md](PRESENT_FORMAT.md).
 
-For syntax highlighting details, see [SYNTAX_HIGHLIGHTING.md](SYNTAX_HIGHLIGHTING.md).
-
 ## Examples
 
 The project includes comprehensive examples in the `example/` directory:
@@ -149,8 +155,33 @@ Code blocks in your slides are automatically highlighted with proper syntax colo
 
 - **Automatic language detection** from file extensions in code blocks
 - **Multiple languages**: Go, Python, JavaScript, TypeScript, Java, C, C++, Rust, Ruby, PHP, Bash, HTML, CSS, JSON, XML, YAML, SQL, and more
-- **Monokai color scheme** with dark background for better readability
+- **Customizable color schemes**: Choose from 70+ themes including monokai, github, dracula, vim, solarized, and more
 - **Fallback to plain rendering** if highlighting fails
+
+#### Available Themes
+
+Run `./present2pdf -list-code-themes` to see all available options. Popular themes include:
+
+- `monokai` (default) - Dark theme with vibrant colors
+- `github` - Light theme matching GitHub's style
+- `dracula` - Dark theme with purple and cyan accents
+- `solarized-dark` / `solarized-light` - Popular color schemes
+- `vim` - Classic Vim colors
+- `nord` - Arctic-inspired color palette
+- And 60+ more!
+
+#### Usage
+
+```bash
+# Use default monokai theme
+./present2pdf -input presentation.slide
+
+# Use GitHub theme (light background)
+./present2pdf -input presentation.slide -code-theme github
+
+# Use Dracula theme
+./present2pdf -input presentation.slide -code-theme dracula -output output.pdf
+```
 
 Example code block:
 

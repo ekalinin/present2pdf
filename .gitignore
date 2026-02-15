@@ -1,5 +1,5 @@
 # Binaries
-present2pdf
+./present2pdf
 *.exe
 *.dll
 *.so

@@ -30,17 +30,14 @@ make example
 
 ## Results
 
-After conversion, the following files will appear in this directory:
+After conversion, the following file will appear in this directory:
 - `presentation.pdf` - result of converting presentation.slide
-- `syntax_highlight_demo.pdf` - result of converting syntax_highlight_demo.slide
 
 PDF files are ignored by git (see `.gitignore`).
 
 ## Format
 
-These presentations use the **Markdown-enabled present** format with CommonMark syntax.
+This presentation uses the **Markdown-enabled present** format with CommonMark syntax.
 
-See:
-- [PRESENT_FORMAT.md](../PRESENT_FORMAT.md) for format details
-- [SYNTAX_HIGHLIGHTING.md](../SYNTAX_HIGHLIGHTING.md) for syntax highlighting details
+See [PRESENT_FORMAT.md](../PRESENT_FORMAT.md) for format details.
 
