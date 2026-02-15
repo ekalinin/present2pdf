@@ -192,10 +192,6 @@ go test ./... -cover
 go test ./... -v
 ```
 
-Test coverage: **76.2%** of statements
-
-For detailed testing documentation, see [TESTING.md](TESTING.md).
-
 ## License
 
 MIT
