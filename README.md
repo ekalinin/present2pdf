@@ -223,4 +223,4 @@ go test ./... -v
 
 ## License
 
-MIT
+[MIT](LICENSE)
