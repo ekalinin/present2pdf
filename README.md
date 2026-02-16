@@ -8,6 +8,7 @@ A command-line application in Go for converting presentations from `.slide` form
 - ✅ Support for headers and text
 - ✅ Bulleted lists
 - ✅ Code blocks with syntax highlighting
+- ✅ **Full UTF-8 and Cyrillic support** (Russian, Ukrainian, Belarusian, etc.)
 - ✅ Customizable code highlighting themes (80+ themes available)
 - ✅ PDF color themes (light and dark)
 - ✅ Author and date information
@@ -140,6 +141,7 @@ For detailed format documentation, see [PRESENT_FORMAT.md](PRESENT_FORMAT.md).
 The project includes comprehensive examples in the `example/` directory:
 
 - `example/presentation.slide` - full demonstration of all Markdown features
+- `example/cyrillic_demo.slide` - full demonstration of Cyrillic support
 
 Convert them:
 
@@ -148,7 +150,46 @@ Convert them:
 ./present2pdf -input example/presentation.slide
 # or
 make example
+
+# Convert Cyrillic example
+./present2pdf -input example/cyrillic_demo.slide -output example/cyrillic_demo.pdf
+./present2pdf -input example/cyrillic_demo.slide -output example/cyrillic_demo_dark.pdf -theme dark
 ```
+
+## UTF-8 and Cyrillic Support
+
+The tool supports UTF-8 encoding and Cyrillic characters (Russian, Ukrainian, Belarusian) in text elements:
+
+- ✅ Titles and subtitles in Cyrillic
+- ✅ Slide content in Cyrillic
+- ✅ Lists with Cyrillic text
+- ⚠️ Code blocks use Courier font without Cyrillic support
+
+**Example:**
+
+```
+# Моя Презентация
+Подзаголовок на русском
+16 Feb 2026
+
+Иван Иванов
+
+## Введение
+
+Презентация с поддержкой кириллицы.
+
+- Первый пункт
+- Второй пункт
+
+## Код (комментарии на английском)
+
+	// Greeting function
+	func greet(name string) {
+		fmt.Println("Hello,", name)
+	}
+```
+
+**Note:** Cyrillic text in code blocks is not supported. Use English for code comments and identifiers.
 
 ## Supported Elements
 

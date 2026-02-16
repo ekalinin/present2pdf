@@ -690,6 +690,8 @@ func TestRenderCodePlain(t *testing.T) {
 	conv := NewConverter()
 	conv.pdf = gofpdf.New("L", "mm", "A4", "")
 	conv.pdf.AddPage()
+	// Initialize translator for UTF-8 support (cp1251 for Cyrillic)
+	conv.translator = conv.pdf.UnicodeTranslatorFromDescriptor("cp1251")
 
 	y := conv.renderCodePlain("test code\nline 2", 40.0)
 

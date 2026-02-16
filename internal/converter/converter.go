@@ -2,6 +2,7 @@ package converter
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"os"
 	"regexp"
@@ -13,6 +14,15 @@ import (
 	"github.com/jung-kurt/gofpdf"
 	"golang.org/x/tools/present"
 )
+
+//go:embed font/cp1251.map
+var cp1251Map []byte
+
+//go:embed font/helvetica_1251.json
+var helvetica1251JSON []byte
+
+//go:embed font/helvetica_1251.z
+var helvetica1251Z []byte
 
 // RGB represents an RGB color
 type RGB struct {
@@ -80,9 +90,10 @@ var (
 
 // Converter handles conversion from .slide to PDF
 type Converter struct {
-	pdf       *gofpdf.Fpdf
-	codeTheme string // Name of the syntax highlighting style
-	theme     Theme  // Color theme for the presentation
+	pdf        *gofpdf.Fpdf
+	translator func(string) string // UTF-8 translator
+	codeTheme  string               // Name of the syntax highlighting style
+	theme      Theme                // Color theme for the presentation
 }
 
 // Token represents a syntax-highlighted token
@@ -162,9 +173,40 @@ func (c *Converter) Convert(inputPath, outputPath string) error {
 		return fmt.Errorf("failed to parse presentation: %w", err)
 	}
 
-	// Create PDF
-	c.pdf = gofpdf.New("L", "mm", "A4", "")
+	// Create temporary directory for font files
+	tmpDir, err := os.MkdirTemp("", "present2pdf-fonts-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Write embedded font files to temp directory
+	fontFiles := map[string][]byte{
+		"cp1251.map":           cp1251Map,
+		"helvetica_1251.json":  helvetica1251JSON,
+		"helvetica_1251.z":     helvetica1251Z,
+	}
+
+	for filename, content := range fontFiles {
+		if err := os.WriteFile(tmpDir+"/"+filename, content, 0644); err != nil {
+			return fmt.Errorf("failed to write font file %s: %w", filename, err)
+		}
+	}
+
+	// Create PDF with UTF-8 support
+	c.pdf = gofpdf.New("L", "mm", "A4", tmpDir)
 	c.pdf.SetAutoPageBreak(false, 0)
+
+	// Add Cyrillic font with cp1251 encoding
+	c.pdf.AddFont("Helvetica", "", "helvetica_1251.json")
+	c.pdf.AddFont("Helvetica", "B", "helvetica_1251.json")
+	c.pdf.AddFont("Helvetica", "I", "helvetica_1251.json")
+
+	// Initialize UTF-8 translation for Cyrillic (cp1251)
+	tr := c.pdf.UnicodeTranslatorFromDescriptor("cp1251")
+
+	// Store translator for later use
+	c.translator = tr
 
 	// Render title slide
 	c.renderTitleSlide(doc)
@@ -192,28 +234,28 @@ func (c *Converter) renderTitleSlide(doc *present.Doc) {
 
 	// Title
 	c.pdf.SetTextColor(c.theme.TitleText.R, c.theme.TitleText.G, c.theme.TitleText.B)
-	c.pdf.SetFont("Arial", "B", 36)
+	c.pdf.SetFont("Helvetica", "B", 36)
 	c.pdf.SetXY(20, 70)
-	c.pdf.MultiCell(257, 15, doc.Title, "", "C", false)
+	c.pdf.MultiCell(257, 15, c.translator(doc.Title), "", "C", false)
 
 	// Subtitle
 	if doc.Subtitle != "" {
 		c.pdf.SetTextColor(c.theme.TitleSubtext.R, c.theme.TitleSubtext.G, c.theme.TitleSubtext.B)
-		c.pdf.SetFont("Arial", "", 20)
+		c.pdf.SetFont("Helvetica", "", 20)
 		c.pdf.SetXY(20, 95)
-		c.pdf.MultiCell(257, 10, doc.Subtitle, "", "C", false)
+		c.pdf.MultiCell(257, 10, c.translator(doc.Subtitle), "", "C", false)
 	}
 
 	// Authors
 	if len(doc.Authors) > 0 {
 		c.pdf.SetTextColor(c.theme.TitleSubtext.R, c.theme.TitleSubtext.G, c.theme.TitleSubtext.B)
-		c.pdf.SetFont("Arial", "", 14)
+		c.pdf.SetFont("Helvetica", "", 14)
 		y := 130.0
 		for _, author := range doc.Authors {
 			authorText := c.extractAuthorText(author)
 			if authorText != "" {
 				c.pdf.SetXY(20, y)
-				c.pdf.MultiCell(257, 8, authorText, "", "C", false)
+				c.pdf.MultiCell(257, 8, c.translator(authorText), "", "C", false)
 				y += 10
 			}
 		}
@@ -222,9 +264,9 @@ func (c *Converter) renderTitleSlide(doc *present.Doc) {
 	// Date
 	if !doc.Time.IsZero() {
 		c.pdf.SetTextColor(c.theme.TitleDate.R, c.theme.TitleDate.G, c.theme.TitleDate.B)
-		c.pdf.SetFont("Arial", "I", 12)
+		c.pdf.SetFont("Helvetica", "I", 12)
 		c.pdf.SetXY(20, 180)
-		c.pdf.MultiCell(257, 6, doc.Time.Format("January 2, 2006"), "", "C", false)
+		c.pdf.MultiCell(257, 6, c.translator(doc.Time.Format("January 2, 2006")), "", "C", false)
 	}
 }
 
@@ -238,9 +280,9 @@ func (c *Converter) renderSlide(section present.Section) {
 
 	// Title
 	c.pdf.SetTextColor(c.theme.SlideTitle.R, c.theme.SlideTitle.G, c.theme.SlideTitle.B)
-	c.pdf.SetFont("Arial", "B", 24)
+	c.pdf.SetFont("Helvetica", "B", 24)
 	c.pdf.SetXY(20, 15)
-	c.pdf.MultiCell(257, 10, section.Title, "", "L", false)
+	c.pdf.MultiCell(257, 10, c.translator(section.Title), "", "L", false)
 
 	// Draw a line under the title
 	c.pdf.SetDrawColor(c.theme.SlideTitleLine.R, c.theme.SlideTitleLine.G, c.theme.SlideTitleLine.B)
@@ -278,18 +320,18 @@ func (c *Converter) renderElement(elem present.Elem, y float64) float64 {
 
 // renderText renders text element
 func (c *Converter) renderText(text present.Text, y float64) float64 {
-	c.pdf.SetFont("Arial", "", 14)
+	c.pdf.SetFont("Helvetica", "", 14)
 	c.pdf.SetXY(20, y)
 
 	content := strings.Join(text.Lines, " ")
-	c.pdf.MultiCell(257, 7, content, "", "L", false)
+	c.pdf.MultiCell(257, 7, c.translator(content), "", "L", false)
 
 	return y + 10
 }
 
 // renderList renders list element
 func (c *Converter) renderList(list present.List, y float64) float64 {
-	c.pdf.SetFont("Arial", "", 12)
+	c.pdf.SetFont("Helvetica", "", 12)
 
 	for _, item := range list.Bullet {
 		c.pdf.SetXY(25, y)
@@ -299,7 +341,7 @@ func (c *Converter) renderList(list present.List, y float64) float64 {
 
 		fullText := bullet + " " + item
 
-		c.pdf.MultiCell(247, 6, fullText, "", "L", false)
+		c.pdf.MultiCell(247, 6, c.translator(fullText), "", "L", false)
 		y += 8
 	}
 
@@ -345,7 +387,7 @@ func (c *Converter) renderCode(code present.Code, y float64) float64 {
 			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
 			c.pdf.SetFont("Courier", "", 10)
 			c.pdf.SetXY(25, lineY)
-			c.pdf.Cell(0, 5, "...")
+			c.pdf.Cell(0, 5, c.translator("..."))
 			break
 		}
 		c.renderHighlightedLine(line, 25, lineY)
@@ -397,7 +439,7 @@ func (c *Converter) renderHTMLParagraphs(html string, y float64) float64 {
 	re := regexp.MustCompile(`<p>(.*?)</p>`)
 	matches := re.FindAllStringSubmatch(html, -1)
 
-	c.pdf.SetFont("Arial", "", 14)
+	c.pdf.SetFont("Helvetica", "", 14)
 
 	for _, match := range matches {
 		if len(match) > 1 {
@@ -409,7 +451,7 @@ func (c *Converter) renderHTMLParagraphs(html string, y float64) float64 {
 			}
 
 			c.pdf.SetXY(20, y)
-			c.pdf.MultiCell(257, 7, text, "", "L", false)
+			c.pdf.MultiCell(257, 7, c.translator(text), "", "L", false)
 			y += 10
 		}
 	}
@@ -419,7 +461,7 @@ func (c *Converter) renderHTMLParagraphs(html string, y float64) float64 {
 
 // renderHTMLList renders HTML list
 func (c *Converter) renderHTMLList(html string, y float64) float64 {
-	c.pdf.SetFont("Arial", "", 12)
+	c.pdf.SetFont("Helvetica", "", 12)
 
 	// Extract list items
 	re := regexp.MustCompile(`<li>(.*?)</li>`)
@@ -431,7 +473,7 @@ func (c *Converter) renderHTMLList(html string, y float64) float64 {
 			item = strings.TrimSpace(item)
 
 			c.pdf.SetXY(25, y)
-			c.pdf.MultiCell(247, 6, "- "+item, "", "L", false)
+			c.pdf.MultiCell(247, 6, c.translator("- "+item), "", "L", false)
 			y += 8
 		}
 	}
@@ -490,7 +532,7 @@ func (c *Converter) renderHTMLCode(html string, y float64) float64 {
 			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
 			c.pdf.SetFont("Courier", "", 10)
 			c.pdf.SetXY(25, lineY)
-			c.pdf.Cell(0, 5, "...")
+			c.pdf.Cell(0, 5, c.translator("..."))
 			break
 		}
 		c.renderHighlightedLine(line, 25, lineY)
@@ -510,9 +552,9 @@ func (c *Converter) renderHTMLPlainText(html string, y float64) float64 {
 		return y
 	}
 
-	c.pdf.SetFont("Arial", "", 12)
+	c.pdf.SetFont("Helvetica", "", 12)
 	c.pdf.SetXY(20, y)
-	c.pdf.MultiCell(257, 6, text, "", "L", false)
+	c.pdf.MultiCell(257, 6, c.translator(text), "", "L", false)
 
 	return y + 8
 }
@@ -651,9 +693,12 @@ func (c *Converter) renderHighlightedLine(tokens []Token, x, y float64) {
 		c.pdf.SetTextColor(token.Color[0], token.Color[1], token.Color[2])
 		c.pdf.SetXY(currentX, y)
 
+		// Translate token value for UTF-8 support
+		value := c.translator(token.Value)
+
 		// Get width of the text to advance X position
-		width := c.pdf.GetStringWidth(token.Value)
-		c.pdf.Cell(width, 5, token.Value)
+		width := c.pdf.GetStringWidth(value)
+		c.pdf.Cell(width, 5, value)
 
 		currentX += width
 	}
@@ -728,11 +773,11 @@ func (c *Converter) renderCodePlain(code string, y float64) float64 {
 	for i, line := range lines {
 		if i >= maxLines {
 			c.pdf.SetXY(25, lineY)
-			c.pdf.Cell(0, 5, "...")
+			c.pdf.Cell(0, 5, c.translator("..."))
 			break
 		}
 		c.pdf.SetXY(25, lineY)
-		c.pdf.Cell(0, 5, line)
+		c.pdf.Cell(0, 5, c.translator(line))
 		lineY += 5
 	}
 
