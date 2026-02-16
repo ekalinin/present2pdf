@@ -1,4 +1,18 @@
-.PHONY: build clean test install example
+.PHONY: help build clean test install example deps fmt vet
+.DEFAULT_GOAL := help
+
+# Show help information
+help:
+	@echo "Available commands:"
+	@echo "  make help      - Show this help message"
+	@echo "  make build     - Build the application"
+	@echo "  make deps      - Install and tidy dependencies"
+	@echo "  make clean     - Remove built files and generated PDFs"
+	@echo "  make example   - Build and run example conversion"
+	@echo "  make install   - Install present2pdf to system"
+	@echo "  make test      - Run all tests"
+	@echo "  make fmt       - Format Go code"
+	@echo "  make vet       - Run Go vet for code checks"
 
 # Build application
 build:
