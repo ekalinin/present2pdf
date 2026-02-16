@@ -44,41 +44,41 @@ type Theme struct {
 	SlideText       RGB
 
 	// Code block colors
-	CodeBackground  RGB
-	CodeText        RGB
-	CodeLineNumber  RGB
+	CodeBackground RGB
+	CodeText       RGB
+	CodeLineNumber RGB
 }
 
 // Predefined themes
 var (
 	// LightTheme is the default light theme
 	LightTheme = Theme{
-		TitleBackground: RGB{41, 128, 185},   // Blue
-		TitleText:       RGB{255, 255, 255},  // White
-		TitleSubtext:    RGB{255, 255, 255},  // White
-		TitleDate:       RGB{255, 255, 255},  // White
-		SlideBackground: RGB{255, 255, 255},  // White
-		SlideTitle:      RGB{41, 128, 185},   // Blue
-		SlideTitleLine:  RGB{41, 128, 185},   // Blue
-		SlideText:       RGB{0, 0, 0},        // Black
-		CodeBackground:  RGB{40, 44, 52},     // Dark gray
-		CodeText:        RGB{171, 178, 191},  // Light gray
-		CodeLineNumber:  RGB{128, 128, 128},  // Gray
+		TitleBackground: RGB{41, 128, 185},  // Blue
+		TitleText:       RGB{255, 255, 255}, // White
+		TitleSubtext:    RGB{255, 255, 255}, // White
+		TitleDate:       RGB{255, 255, 255}, // White
+		SlideBackground: RGB{255, 255, 255}, // White
+		SlideTitle:      RGB{41, 128, 185},  // Blue
+		SlideTitleLine:  RGB{41, 128, 185},  // Blue
+		SlideText:       RGB{0, 0, 0},       // Black
+		CodeBackground:  RGB{40, 44, 52},    // Dark gray
+		CodeText:        RGB{171, 178, 191}, // Light gray
+		CodeLineNumber:  RGB{128, 128, 128}, // Gray
 	}
 
 	// DarkTheme is a dark theme
 	DarkTheme = Theme{
-		TitleBackground: RGB{30, 30, 46},     // Dark blue-gray
-		TitleText:       RGB{205, 214, 244},  // Light gray
-		TitleSubtext:    RGB{166, 173, 200},  // Medium gray
-		TitleDate:       RGB{137, 180, 250},  // Light blue
-		SlideBackground: RGB{36, 39, 58},     // Dark gray-blue
-		SlideTitle:      RGB{137, 180, 250},  // Light blue
-		SlideTitleLine:  RGB{137, 180, 250},  // Light blue
-		SlideText:       RGB{205, 214, 244},  // Light gray
-		CodeBackground:  RGB{30, 30, 46},     // Darker blue-gray
-		CodeText:        RGB{205, 214, 244},  // Light gray
-		CodeLineNumber:  RGB{108, 112, 134},  // Medium gray
+		TitleBackground: RGB{30, 30, 46},    // Dark blue-gray
+		TitleText:       RGB{205, 214, 244}, // Light gray
+		TitleSubtext:    RGB{166, 173, 200}, // Medium gray
+		TitleDate:       RGB{137, 180, 250}, // Light blue
+		SlideBackground: RGB{36, 39, 58},    // Dark gray-blue
+		SlideTitle:      RGB{137, 180, 250}, // Light blue
+		SlideTitleLine:  RGB{137, 180, 250}, // Light blue
+		SlideText:       RGB{205, 214, 244}, // Light gray
+		CodeBackground:  RGB{30, 30, 46},    // Darker blue-gray
+		CodeText:        RGB{205, 214, 244}, // Light gray
+		CodeLineNumber:  RGB{108, 112, 134}, // Medium gray
 	}
 
 	// availableThemes maps theme names to themes
@@ -92,8 +92,8 @@ var (
 type Converter struct {
 	pdf        *gofpdf.Fpdf
 	translator func(string) string // UTF-8 translator
-	codeTheme  string               // Name of the syntax highlighting style
-	theme      Theme                // Color theme for the presentation
+	codeTheme  string              // Name of the syntax highlighting style
+	theme      Theme               // Color theme for the presentation
 }
 
 // Token represents a syntax-highlighted token
@@ -182,9 +182,9 @@ func (c *Converter) Convert(inputPath, outputPath string) error {
 
 	// Write embedded font files to temp directory
 	fontFiles := map[string][]byte{
-		"cp1251.map":           cp1251Map,
-		"helvetica_1251.json":  helvetica1251JSON,
-		"helvetica_1251.z":     helvetica1251Z,
+		"cp1251.map":          cp1251Map,
+		"helvetica_1251.json": helvetica1251JSON,
+		"helvetica_1251.z":    helvetica1251Z,
 	}
 
 	for filename, content := range fontFiles {
@@ -414,18 +414,27 @@ func (c *Converter) extractAuthorText(author present.Author) string {
 func (c *Converter) renderHTML(html present.HTML, y float64) float64 {
 	htmlContent := string(html.HTML)
 
-	// Handle code blocks first (most specific)
+	// Handle code blocks first (most specific) - they should be standalone
 	if strings.Contains(htmlContent, "<pre><code>") {
 		return c.renderHTMLCode(htmlContent, y)
 	}
 
-	// Handle lists
-	if strings.Contains(htmlContent, "<ul>") || strings.Contains(htmlContent, "<ol>") {
+	// Check if content contains multiple element types
+	hasLists := strings.Contains(htmlContent, "<ul>") || strings.Contains(htmlContent, "<ol>")
+	hasParagraphs := strings.Contains(htmlContent, "<p>")
+
+	// If content has both lists and paragraphs, render them in order
+	if hasLists && hasParagraphs {
+		return c.renderHTMLMixed(htmlContent, y)
+	}
+
+	// Handle lists only
+	if hasLists {
 		return c.renderHTMLList(htmlContent, y)
 	}
 
-	// Handle paragraphs (may contain multiple <p> tags)
-	if strings.Contains(htmlContent, "<p>") {
+	// Handle paragraphs only
+	if hasParagraphs {
 		return c.renderHTMLParagraphs(htmlContent, y)
 	}
 
@@ -453,6 +462,30 @@ func (c *Converter) renderHTMLParagraphs(html string, y float64) float64 {
 			c.pdf.SetXY(20, y)
 			c.pdf.MultiCell(257, 7, c.translator(text), "", "L", false)
 			y += 10
+		}
+	}
+
+	return y
+}
+
+// renderHTMLMixed renders HTML content with mixed paragraphs and lists in order
+func (c *Converter) renderHTMLMixed(html string, y float64) float64 {
+	// Split by major HTML tags while preserving them
+	// Match: <p>...</p>, <ul>...</ul>, <ol>...</ol>
+	re := regexp.MustCompile(`(?s)(<p>.*?</p>|<ul>.*?</ul>|<ol>.*?</ol>)`)
+	matches := re.FindAllString(html, -1)
+
+	for _, match := range matches {
+		match = strings.TrimSpace(match)
+		if match == "" {
+			continue
+		}
+
+		// Determine element type and render accordingly
+		if strings.HasPrefix(match, "<p>") {
+			y = c.renderHTMLParagraphs(match, y)
+		} else if strings.HasPrefix(match, "<ul>") || strings.HasPrefix(match, "<ol>") {
+			y = c.renderHTMLList(match, y)
 		}
 	}
 
