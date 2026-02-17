@@ -9,6 +9,9 @@ import (
 	"github.com/ekalinin/present2pdf/internal/converter"
 )
 
+// Version is set during build time via ldflags
+var version = "dev"
+
 func main() {
 	inputFile := flag.String("input", "", "Path to .slide file (required)")
 	outputFile := flag.String("output", "", "Path to output PDF file (optional, defaults to input filename with .pdf extension)")
@@ -16,7 +19,14 @@ func main() {
 	pdfTheme := flag.String("theme", "light", "PDF color theme: light or dark (use -list-themes to see available options)")
 	listCodeThemes := flag.Bool("list-code-themes", false, "List available code syntax highlighting themes and exit")
 	listThemes := flag.Bool("list-themes", false, "List available PDF themes and exit")
+	showVersion := flag.Bool("version", false, "Show version information and exit")
 	flag.Parse()
+
+	// If version flag is set, print version and exit
+	if *showVersion {
+		fmt.Println(version)
+		os.Exit(0)
+	}
 
 	// If list-themes flag is set, print available themes and exit
 	if *listThemes {

@@ -1,6 +1,10 @@
 .PHONY: help build clean test install example deps fmt vet
 .DEFAULT_GOAL := help
 
+# Version information
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS := -X main.version=$(VERSION)
+
 # Show help information
 help:
 	@echo "Available commands:"
@@ -13,10 +17,14 @@ help:
 	@echo "  make test      - Run all tests"
 	@echo "  make fmt       - Format Go code"
 	@echo "  make vet       - Run Go vet for code checks"
+	@echo ""
+	@echo "Version control:"
+	@echo "  VERSION        - Set version (default: git describe or 'dev')"
+	@echo "  Example: make build VERSION=1.0.0"
 
 # Build application
 build:
-	go build -o present2pdf ./cmd/present2pdf
+	go build -ldflags "$(LDFLAGS)" -o present2pdf ./cmd/present2pdf
 
 # Install dependencies
 deps:
@@ -35,7 +43,7 @@ example: build
 
 # Install to system
 install:
-	go install ./cmd/present2pdf
+	go install -ldflags "$(LDFLAGS)" ./cmd/present2pdf
 
 # Run tests
 test:

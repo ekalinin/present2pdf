@@ -66,6 +66,7 @@ make example
 - `-theme` - PDF color theme: `light` or `dark` (optional, default: `light`)
 - `-list-code-themes` - list all available code highlighting themes and exit
 - `-list-themes` - list all available PDF themes and exit
+- `-version` - show version information and exit
 - `-h` - show help
 
 ## .slide File Format
@@ -309,6 +310,27 @@ make install        # Install to system
 make fmt            # Format code
 make vet            # Check code
 make test           # Run tests
+```
+
+### Building with Version
+
+By default, the version is determined automatically from git tags:
+
+```bash
+# Build with auto-detected version (from git describe)
+make build
+
+# Build with specific version
+make build VERSION=1.0.0
+
+# Install with specific version
+make install VERSION=1.0.0
+```
+
+To check the version:
+
+```bash
+./present2pdf -version
 ```
 
 ## Testing
