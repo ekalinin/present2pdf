@@ -134,7 +134,7 @@ More content here.
 
 6. **Comments**: Lines starting with `//` are ignored
 
-For detailed format documentation, see [PRESENT_FORMAT.md](PRESENT_FORMAT.md).
+For detailed format documentation, see [PRESENT_FORMAT.md](docs/PRESENT_FORMAT.md).
 
 ## Examples
 
@@ -171,7 +171,7 @@ See `example/cyrillic_demo.slide` for a complete demonstration.
 - **Helvetica** (Arial) - main text font with full Cyrillic support; bold/italic simulated visually
 - **JetBrains Mono** - monospace font for code blocks with excellent Cyrillic support
 
-For details about code fonts see [MONOSPACE_FONT.md](MONOSPACE_FONT.md).
+For details about code fonts see [MONOSPACE_FONT.md](docs/MONOSPACE_FONT.md).
 
 ## Supported Elements
 
@@ -246,7 +246,7 @@ You can combine PDF themes with code highlighting themes:
 ./present2pdf -input presentation.slide -theme dark -code-theme github
 ```
 
-For more details, see [PDF_THEMES.md](PDF_THEMES.md).
+For more details, see [PDF_THEMES.md](docs/PDF_THEMES.md).
 
 #### Usage
 
@@ -284,6 +284,7 @@ present2pdf/
 ├── cmd/
 │   └── present2pdf/
 │       └── main.go            # Application entry point
+├── docs/                      # Additional documentation
 ├── internal/
 │   └── converter/
 │       ├── converter.go       # Conversion logic

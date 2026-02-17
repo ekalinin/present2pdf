@@ -65,7 +65,7 @@ You can generate the same presentation with different themes:
 ./present2pdf -input example/presentation.slide -theme light -code-theme dracula
 ```
 
-For more information about themes, see [PDF_THEMES.md](../PDF_THEMES.md).
+For more information about themes, see [PDF_THEMES.md](../docs/PDF_THEMES.md).
 
 ## Results
 
@@ -81,5 +81,5 @@ PDF files are ignored by git (see `.gitignore`).
 
 This presentation uses the **Markdown-enabled present** format with CommonMark syntax.
 
-See [PRESENT_FORMAT.md](../PRESENT_FORMAT.md) for format details.
+See [PRESENT_FORMAT.md](../docs/PRESENT_FORMAT.md) for format details.
 
