@@ -166,7 +166,7 @@ func GetAvailableThemes() []string {
 }
 
 // setTextFont sets the text font with the given style and size
-// Uses Helvetica (единственный с корректной кириллицей). Bold/italic — визуальная имитация
+// Uses Helvetica (the only one with proper Cyrillic support). Bold/italic — visual simulation
 func (c *Converter) setTextFont(style string, size float64) {
 	c.pdf.SetFont("Helvetica", "", size)
 }
@@ -788,11 +788,11 @@ func parseHTMLFormatting(html string) []TextFragment {
 }
 
 // renderFormattedText renders text with bold and italic formatting
-// Bold/italic — визуальная имитация (Helvetica не имеет B/I для кириллицы)
+// Bold/italic — visual simulation (Helvetica has no B/I variants for Cyrillic)
 func (c *Converter) renderFormattedText(fragments []TextFragment, x, y, maxWidth, lineHeight float64) float64 {
 	const (
-		boldOffset   = 0.2  // смещение для имитации жирного (мм)
-		italicSkew   = 12.0 // угол наклона для имитации курсива (градусы)
+		boldOffset = 0.2  // offset for bold simulation (mm)
+		italicSkew = 12.0 // skew angle for italic simulation (degrees)
 	)
 	currentX := x
 	currentY := y
