@@ -1,6 +1,6 @@
 # present2pdf
 
-A command-line application in Go for converting presentations from `.slide` format (golang.org/x/tools/present) to PDF.
+A command-line application in Go for converting presentations from `.slide` format ([golang.org/x/tools/present](https://pkg.go.dev/golang.org/x/tools/present)) to PDF.
 
 ## Features
 
