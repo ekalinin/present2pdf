@@ -182,7 +182,7 @@ The syntax highlighting is implemented using:
 
 ## Limitations
 
-- Maximum 12 lines of code per block (with "..." indicator for overflow)
+- Maximum 20 lines of code per block (with "..." indicator for overflow)
 - Line wrapping is not supported (long lines may be truncated)
 - Some advanced formatting features (e.g., background highlights) are not supported
 

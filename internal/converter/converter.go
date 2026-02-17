@@ -102,10 +102,13 @@ var (
 
 // Converter handles conversion from .slide to PDF
 type Converter struct {
-	pdf        *gofpdf.Fpdf
-	translator func(string) string // UTF-8 translator
-	codeTheme  string              // Name of the syntax highlighting style
-	theme      Theme               // Color theme for the presentation
+	pdf               *gofpdf.Fpdf
+	translator        func(string) string // UTF-8 translator
+	codeTheme         string              // Name of the syntax highlighting style
+	theme             Theme               // Color theme for the presentation
+	currentSlideTitle  string              // For diagnostic messages
+	currentSlideNumber int                 // For diagnostic messages
+	quiet              bool                // Suppress diagnostic warnings
 }
 
 // Token represents a syntax-highlighted token
@@ -132,6 +135,13 @@ func WithTheme(themeName string) Option {
 			c.theme = theme
 		}
 		// If theme not found, keep the default
+	}
+}
+
+// WithQuiet suppresses diagnostic warnings (slide overflow, code truncation)
+func WithQuiet(quiet bool) Option {
+	return func(c *Converter) {
+		c.quiet = quiet
 	}
 }
 
@@ -240,10 +250,12 @@ func (c *Converter) Convert(inputPath, outputPath string) error {
 	c.translator = tr
 
 	// Render title slide
+	c.currentSlideNumber = 1
 	c.renderTitleSlide(doc)
 
 	// Render each section as a slide
-	for _, section := range doc.Sections {
+	for i, section := range doc.Sections {
+		c.currentSlideNumber = i + 2
 		c.renderSlide(section)
 	}
 
@@ -265,29 +277,29 @@ func (c *Converter) renderTitleSlide(doc *present.Doc) {
 
 	// Title
 	c.pdf.SetTextColor(c.theme.TitleText.R, c.theme.TitleText.G, c.theme.TitleText.B)
-	c.setTextFont("B", 36)
+	c.setTextFont("B", 54)
 	c.pdf.SetXY(20, 70)
-	c.pdf.MultiCell(257, 15, c.translator(doc.Title), "", "C", false)
+	c.pdf.MultiCell(257, 23, c.translator(doc.Title), "", "C", false)
 
 	// Subtitle
 	if doc.Subtitle != "" {
 		c.pdf.SetTextColor(c.theme.TitleSubtext.R, c.theme.TitleSubtext.G, c.theme.TitleSubtext.B)
-		c.setTextFont("", 20)
+		c.setTextFont("", 30)
 		c.pdf.SetXY(20, 95)
-		c.pdf.MultiCell(257, 10, c.translator(doc.Subtitle), "", "C", false)
+		c.pdf.MultiCell(257, 15, c.translator(doc.Subtitle), "", "C", false)
 	}
 
 	// Authors
 	if len(doc.Authors) > 0 {
 		c.pdf.SetTextColor(c.theme.TitleSubtext.R, c.theme.TitleSubtext.G, c.theme.TitleSubtext.B)
-		c.setTextFont("", 14)
+		c.setTextFont("", 21)
 		y := 130.0
 		for _, author := range doc.Authors {
 			authorText := c.extractAuthorText(author)
 			if authorText != "" {
 				c.pdf.SetXY(20, y)
-				c.pdf.MultiCell(257, 8, c.translator(authorText), "", "C", false)
-				y += 10
+				c.pdf.MultiCell(257, 12, c.translator(authorText), "", "C", false)
+				y += 15
 			}
 		}
 	}
@@ -295,14 +307,15 @@ func (c *Converter) renderTitleSlide(doc *present.Doc) {
 	// Date
 	if !doc.Time.IsZero() {
 		c.pdf.SetTextColor(c.theme.TitleDate.R, c.theme.TitleDate.G, c.theme.TitleDate.B)
-		c.setTextFont("I", 12)
+		c.setTextFont("I", 18)
 		c.pdf.SetXY(20, 180)
-		c.pdf.MultiCell(257, 6, c.translator(doc.Time.Format("January 2, 2006")), "", "C", false)
+		c.pdf.MultiCell(257, 9, c.translator(doc.Time.Format("January 2, 2006")), "", "C", false)
 	}
 }
 
 // renderSlide renders a single slide
 func (c *Converter) renderSlide(section present.Section) {
+	c.currentSlideTitle = section.Title
 	c.pdf.AddPage()
 
 	// Background
@@ -311,22 +324,25 @@ func (c *Converter) renderSlide(section present.Section) {
 
 	// Title
 	c.pdf.SetTextColor(c.theme.SlideTitle.R, c.theme.SlideTitle.G, c.theme.SlideTitle.B)
-	c.setTextFont("B", 24)
+	c.setTextFont("B", 29)
 	c.pdf.SetXY(20, 15)
-	c.pdf.MultiCell(257, 10, c.translator(section.Title), "", "L", false)
+	c.pdf.MultiCell(257, 12, c.translator(section.Title), "", "L", false)
 
 	// Draw a line under the title
 	c.pdf.SetDrawColor(c.theme.SlideTitleLine.R, c.theme.SlideTitleLine.G, c.theme.SlideTitleLine.B)
 	c.pdf.SetLineWidth(0.5)
-	c.pdf.Line(20, 30, 277, 30)
+	c.pdf.Line(20, 36, 277, 36)
 
 	// Content
 	c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
-	y := 40.0
+	y := 45.0
 
 	for _, elem := range section.Elem {
 		y = c.renderElement(elem, y)
 		if y > 190 {
+			if !c.quiet {
+				fmt.Fprintf(os.Stderr, "Warning: slide %d \"%s\" does not fit - content overflow (y=%.0f), some elements cut off\n", c.currentSlideNumber, section.Title, y)
+			}
 			break // Avoid content overflow
 		}
 	}
@@ -360,14 +376,14 @@ func (c *Converter) renderText(text present.Text, y float64) float64 {
 	}
 
 	// Regular text rendering
-	c.setTextFont("", 14)
+	c.setTextFont("", 21)
 	c.pdf.SetXY(20, y)
 
 	// For regular text, join with spaces
 	content = strings.Join(text.Lines, " ")
-	c.pdf.MultiCell(257, 7, c.translator(content), "", "L", false)
+	c.pdf.MultiCell(257, 11, c.translator(content), "", "L", false)
 
-	return y + 10
+	return y + 15
 }
 
 // renderMarkdownCodeBlock renders markdown code blocks (```)
@@ -378,10 +394,10 @@ func (c *Converter) renderMarkdownCodeBlock(content string, y float64) float64 {
 
 	if len(match) < 3 {
 		// No valid code block found, render as plain text
-		c.setTextFont("", 14)
+		c.setTextFont("", 21)
 		c.pdf.SetXY(20, y)
-		c.pdf.MultiCell(257, 7, c.translator(content), "", "L", false)
-		return y + 10
+		c.pdf.MultiCell(257, 11, c.translator(content), "", "L", false)
+		return y + 15
 	}
 
 	language := match[1]
@@ -401,37 +417,40 @@ func (c *Converter) renderMarkdownCodeBlock(content string, y float64) float64 {
 	lines := splitTokensIntoLines(tokens)
 
 	// Calculate code block height
-	codeHeight := float64(len(lines)) * 5
-	if codeHeight > 80 {
-		codeHeight = 80
+	codeHeight := float64(len(lines)) * 6
+	if codeHeight > 120 {
+		codeHeight = 120
 	}
 
 	// Background for code
 	c.pdf.SetFillColor(c.theme.CodeBackground.R, c.theme.CodeBackground.G, c.theme.CodeBackground.B)
-	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
+	c.pdf.Rect(20, y, 257, codeHeight+5, "F")
 
 	// Render lines with syntax highlighting
 	lineY := y + 2
-	maxLines := 12
+	maxLines := 20
 	for i, line := range lines {
 		if i >= maxLines {
+			if !c.quiet {
+				fmt.Fprintf(os.Stderr, "Warning: code block truncated on slide %d \"%s\" (max %d lines, has %d)\n", c.currentSlideNumber, c.currentSlideTitle, maxLines, len(lines))
+			}
 			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
-			c.setCodeFont("", 9)
+			c.setCodeFont("", 11)
 			c.pdf.SetXY(25, lineY)
-			c.pdf.Cell(0, 5, c.translator("..."))
+			c.pdf.Cell(0, 6, c.translator("..."))
 			break
 		}
 		c.renderHighlightedLine(line, 25, lineY)
-		lineY += 5
+		lineY += 6
 	}
 
 	c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
-	return y + codeHeight + 10
+	return y + codeHeight + 12
 }
 
 // renderList renders list element
 func (c *Converter) renderList(list present.List, y float64) float64 {
-	c.setTextFont("", 12)
+	c.setTextFont("", 18)
 
 	bullet := "• "
 	for _, item := range list.Bullet {
@@ -439,11 +458,11 @@ func (c *Converter) renderList(list present.List, y float64) float64 {
 
 		fullText := bullet + item
 
-		c.pdf.MultiCell(247, 6, c.translator(fullText), "", "L", false)
-		y += 8
+		c.pdf.MultiCell(247, 9, c.translator(fullText), "", "L", false)
+		y += 12
 	}
 
-	return y + 4
+	return y + 6
 }
 
 // renderCode renders code block
@@ -468,32 +487,35 @@ func (c *Converter) renderCode(code present.Code, y float64) float64 {
 	lines := splitTokensIntoLines(tokens)
 
 	// Calculate code block height
-	codeHeight := float64(len(lines)) * 5
-	if codeHeight > 80 {
-		codeHeight = 80
+	codeHeight := float64(len(lines)) * 6
+	if codeHeight > 120 {
+		codeHeight = 120
 	}
 
 	// Background for code
 	c.pdf.SetFillColor(c.theme.CodeBackground.R, c.theme.CodeBackground.G, c.theme.CodeBackground.B)
-	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
+	c.pdf.Rect(20, y, 257, codeHeight+5, "F")
 
 	// Render lines with syntax highlighting
 	lineY := y + 2
-	maxLines := 12
+	maxLines := 20
 	for i, line := range lines {
 		if i >= maxLines {
+			if !c.quiet {
+				fmt.Fprintf(os.Stderr, "Warning: code block truncated on slide %d \"%s\" (max %d lines, has %d)\n", c.currentSlideNumber, c.currentSlideTitle, maxLines, len(lines))
+			}
 			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
-			c.setCodeFont("", 9)
+			c.setCodeFont("", 11)
 			c.pdf.SetXY(25, lineY)
-			c.pdf.Cell(0, 5, c.translator("..."))
+			c.pdf.Cell(0, 6, c.translator("..."))
 			break
 		}
 		c.renderHighlightedLine(line, 25, lineY)
-		lineY += 5
+		lineY += 6
 	}
 
 	c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
-	return y + codeHeight + 10
+	return y + codeHeight + 12
 }
 
 // extractAuthorText extracts text from author element
@@ -571,8 +593,8 @@ func (c *Converter) renderHTMLParagraphs(html string, y float64) float64 {
 
 			// Render formatted text
 			c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
-			y = c.renderFormattedText(fragments, 20, y, 257, 7)
-			y += 3 // Extra spacing between paragraphs
+			y = c.renderFormattedText(fragments, 20, y, 257, 11)
+			y += 5 // Extra spacing between paragraphs
 		}
 	}
 
@@ -620,17 +642,17 @@ func (c *Converter) renderHTMLList(html string, y float64) float64 {
 
 			// Render bullet
 			c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
-			c.setTextFont("", 12)
+			c.setTextFont("", 18)
 			c.pdf.SetXY(25, y)
-			c.pdf.Cell(5, 6, c.translator("• "))
+			c.pdf.Cell(8, 9, c.translator("• "))
 
 			// Render formatted text
-			y = c.renderFormattedText(fragments, 30, y, 247, 6)
-			y += 2
+			y = c.renderFormattedText(fragments, 30, y, 247, 9)
+			y += 3
 		}
 	}
 
-	return y + 4
+	return y + 6
 }
 
 // renderHTMLCode renders HTML code block
@@ -668,32 +690,35 @@ func (c *Converter) renderHTMLCode(html string, y float64) float64 {
 	lines := splitTokensIntoLines(tokens)
 
 	// Calculate code block height
-	codeHeight := float64(len(lines)) * 5
-	if codeHeight > 80 {
-		codeHeight = 80
+	codeHeight := float64(len(lines)) * 6
+	if codeHeight > 120 {
+		codeHeight = 120
 	}
 
 	// Background for code
 	c.pdf.SetFillColor(c.theme.CodeBackground.R, c.theme.CodeBackground.G, c.theme.CodeBackground.B)
-	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
+	c.pdf.Rect(20, y, 257, codeHeight+5, "F")
 
 	// Render lines with syntax highlighting
 	lineY := y + 2
-	maxLines := 12
+	maxLines := 20
 	for i, line := range lines {
 		if i >= maxLines {
+			if !c.quiet {
+				fmt.Fprintf(os.Stderr, "Warning: code block truncated on slide %d \"%s\" (max %d lines, has %d)\n", c.currentSlideNumber, c.currentSlideTitle, maxLines, len(lines))
+			}
 			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
-			c.setCodeFont("", 9)
+			c.setCodeFont("", 11)
 			c.pdf.SetXY(25, lineY)
-			c.pdf.Cell(0, 5, c.translator("..."))
+			c.pdf.Cell(0, 6, c.translator("..."))
 			break
 		}
 		c.renderHighlightedLine(line, 25, lineY)
-		lineY += 5
+		lineY += 6
 	}
 
 	c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
-	return y + codeHeight + 10
+	return y + codeHeight + 12
 }
 
 // renderHTMLPlainText renders HTML as plain text (fallback)
@@ -705,11 +730,11 @@ func (c *Converter) renderHTMLPlainText(html string, y float64) float64 {
 		return y
 	}
 
-	c.setTextFont("", 12)
+	c.setTextFont("", 18)
 	c.pdf.SetXY(20, y)
-	c.pdf.MultiCell(257, 6, c.translator(text), "", "L", false)
+	c.pdf.MultiCell(257, 9, c.translator(text), "", "L", false)
 
-	return y + 8
+	return y + 12
 }
 
 // stripHTMLTags removes HTML tags from string
@@ -797,7 +822,7 @@ func (c *Converter) renderFormattedText(fragments []TextFragment, x, y, maxWidth
 	currentX := x
 	currentY := y
 
-	c.setTextFont("", 12)
+	c.setTextFont("", 18)
 
 	for _, fragment := range fragments {
 		words := strings.Fields(fragment.Text)
@@ -964,11 +989,11 @@ func (c *Converter) renderHighlightedLine(tokens []Token, x, y float64) {
 		value := c.translator(token.Value)
 
 		// Use JetBrains Mono for code - monospace font with Cyrillic support
-		c.setCodeFont("", 9)
+		c.setCodeFont("", 11)
 
 		// Get width of the text to advance X position
 		width := c.pdf.GetStringWidth(value)
-		c.pdf.Cell(width, 5, value)
+		c.pdf.Cell(width, 6, value)
 
 		currentX += width
 	}
@@ -1027,30 +1052,33 @@ func (c *Converter) renderCodePlain(code string, y float64) float64 {
 
 	// Background for code
 	c.pdf.SetFillColor(c.theme.CodeBackground.R, c.theme.CodeBackground.G, c.theme.CodeBackground.B)
-	codeHeight := float64(len(lines)) * 5
-	if codeHeight > 80 {
-		codeHeight = 80
+	codeHeight := float64(len(lines)) * 6
+	if codeHeight > 120 {
+		codeHeight = 120
 	}
 
-	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
+	c.pdf.Rect(20, y, 257, codeHeight+5, "F")
 
 	// Code text - use JetBrains Mono for monospace with Cyrillic support
-	c.setCodeFont("", 9)
+	c.setCodeFont("", 11)
 	c.pdf.SetTextColor(c.theme.CodeText.R, c.theme.CodeText.G, c.theme.CodeText.B)
 
 	lineY := y + 2
-	maxLines := 12
+	maxLines := 20
 	for i, line := range lines {
 		if i >= maxLines {
+			if !c.quiet {
+				fmt.Fprintf(os.Stderr, "Warning: code block truncated on slide %d \"%s\" (max %d lines, has %d)\n", c.currentSlideNumber, c.currentSlideTitle, maxLines, len(lines))
+			}
 			c.pdf.SetXY(25, lineY)
-			c.pdf.Cell(0, 5, c.translator("..."))
+			c.pdf.Cell(0, 6, c.translator("..."))
 			break
 		}
 		c.pdf.SetXY(25, lineY)
-		c.pdf.Cell(0, 5, c.translator(line))
-		lineY += 5
+		c.pdf.Cell(0, 6, c.translator(line))
+		lineY += 6
 	}
 
 	c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
-	return y + codeHeight + 10
+	return y + codeHeight + 12
 }

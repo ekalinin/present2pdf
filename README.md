@@ -65,6 +65,7 @@ make example
 - `-theme` - PDF color theme: `light` or `dark` (optional, default: `light`)
 - `-list-code-themes` - list all available code highlighting themes and exit
 - `-list-themes` - list all available PDF themes and exit
+- `-quiet` - suppress diagnostic warnings (slide overflow, code truncation)
 - `-version` - show version information and exit
 - `-h` - show help
 

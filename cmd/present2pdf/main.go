@@ -19,6 +19,7 @@ func main() {
 	pdfTheme := flag.String("theme", "light", "PDF color theme: light or dark (use -list-themes to see available options)")
 	listCodeThemes := flag.Bool("list-code-themes", false, "List available code syntax highlighting themes and exit")
 	listThemes := flag.Bool("list-themes", false, "List available PDF themes and exit")
+	quiet := flag.Bool("quiet", false, "Suppress diagnostic warnings (slide overflow, code truncation)")
 	showVersion := flag.Bool("version", false, "Show version information and exit")
 	flag.Parse()
 
@@ -71,6 +72,7 @@ func main() {
 	conv := converter.NewConverter(
 		converter.WithCodeTheme(*codeTheme),
 		converter.WithTheme(*pdfTheme),
+		converter.WithQuiet(*quiet),
 	)
 	if err := conv.Convert(*inputFile, output); err != nil {
 		fmt.Fprintf(os.Stderr, "Error converting file: %v\n", err)
