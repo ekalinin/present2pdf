@@ -69,7 +69,9 @@ go build -o present2pdf ./cmd/present2pdf
 
 ## Release process
 
-When creating a release:
+For automated releases via GitHub Actions and GoReleaser, see [RELEASE.md](RELEASE.md).
+
+For manual local release:
 
 1. Tag the commit with a version:
    ```bash

@@ -337,6 +337,8 @@ To check the version:
 ./present2pdf -version
 ```
 
+For creating official releases, see [docs/RELEASE.md](docs/RELEASE.md).
+
 ## Testing
 
 The project includes comprehensive tests for both Markdown-enabled and legacy formats.

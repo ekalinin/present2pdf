@@ -31,3 +31,4 @@ Thumbs.db
 TODO.md
 present2pdf
 !cmd/present2pdf
+dist/
