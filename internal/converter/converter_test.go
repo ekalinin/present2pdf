@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -1166,6 +1167,369 @@ Author
 			}
 			if info.Size() < 1024 {
 				t.Errorf("PDF file too small for style %s: %d bytes", codeTheme, info.Size())
+			}
+		})
+	}
+}
+
+func TestParseHTMLFormatting(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantFrags []TextFragment
+	}{
+		{
+			name:  "plain text",
+			input: "Hello world",
+			wantFrags: []TextFragment{
+				{Text: "Hello world"},
+			},
+		},
+		{
+			name:  "bold text",
+			input: "<strong>bold</strong>",
+			wantFrags: []TextFragment{
+				{Text: "bold", Bold: true},
+			},
+		},
+		{
+			name:  "italic text",
+			input: "<em>italic</em>",
+			wantFrags: []TextFragment{
+				{Text: "italic", Italic: true},
+			},
+		},
+		{
+			name:  "link with href",
+			input: `<a href="https://example.com">click here</a>`,
+			wantFrags: []TextFragment{
+				{Text: "click here", URL: "https://example.com"},
+			},
+		},
+		{
+			name:  "link with single-quoted href",
+			input: `<a href='https://golang.org'>Go</a>`,
+			wantFrags: []TextFragment{
+				{Text: "Go", URL: "https://golang.org"},
+			},
+		},
+		{
+			name:  "text before and after link",
+			input: `Visit <a href="https://go.dev">Go</a> now.`,
+			wantFrags: []TextFragment{
+				{Text: "Visit "},
+				{Text: "Go", URL: "https://go.dev"},
+				{Text: " now."},
+			},
+		},
+		{
+			name:  "bold link",
+			input: `<strong><a href="https://example.com">bold link</a></strong>`,
+			wantFrags: []TextFragment{
+				{Text: "bold link", Bold: true, URL: "https://example.com"},
+			},
+		},
+		{
+			name:  "multiple links",
+			input: `<a href="https://a.com">A</a> and <a href="https://b.com">B</a>`,
+			wantFrags: []TextFragment{
+				{Text: "A", URL: "https://a.com"},
+				{Text: " and "},
+				{Text: "B", URL: "https://b.com"},
+			},
+		},
+		{
+			name:  "html entities decoded",
+			input: `x &lt; 10 &amp;&amp; y &gt; 5`,
+			wantFrags: []TextFragment{
+				{Text: "x < 10 && y > 5"},
+			},
+		},
+		{
+			name:      "empty input",
+			input:     "",
+			wantFrags: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseHTMLFormatting(tt.input)
+
+			if len(got) != len(tt.wantFrags) {
+				t.Fatalf("parseHTMLFormatting() returned %d fragments, want %d\ngot:  %+v\nwant: %+v",
+					len(got), len(tt.wantFrags), got, tt.wantFrags)
+			}
+
+			for i, frag := range got {
+				want := tt.wantFrags[i]
+				if frag.Text != want.Text {
+					t.Errorf("fragment[%d].Text = %q, want %q", i, frag.Text, want.Text)
+				}
+				if frag.Bold != want.Bold {
+					t.Errorf("fragment[%d].Bold = %v, want %v", i, frag.Bold, want.Bold)
+				}
+				if frag.Italic != want.Italic {
+					t.Errorf("fragment[%d].Italic = %v, want %v", i, frag.Italic, want.Italic)
+				}
+				if frag.URL != want.URL {
+					t.Errorf("fragment[%d].URL = %q, want %q", i, frag.URL, want.URL)
+				}
+			}
+		})
+	}
+}
+
+func TestStripHTMLTags(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"plain text", "hello world", "hello world"},
+		{"bold tag", "<b>bold</b>", "bold"},
+		{"anchor tag", `<a href="https://example.com">link text</a>`, "link text"},
+		{"nested tags", "<p><strong>bold</strong> and <em>italic</em></p>", "bold and italic"},
+		{"html entities", "&lt;foo&gt; &amp; &quot;bar&quot;", "<foo> & \"bar\""},
+		{"empty string", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripHTMLTags(tt.input)
+			if got != tt.expected {
+				t.Errorf("stripHTMLTags(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestThemeLinkColors(t *testing.T) {
+	t.Run("light theme has link color", func(t *testing.T) {
+		c := LightTheme.LinkColor
+		if c.R == 0 && c.G == 0 && c.B == 0 {
+			t.Error("LightTheme.LinkColor is black (not set)")
+		}
+		if c.R > 255 || c.G > 255 || c.B > 255 {
+			t.Errorf("LightTheme.LinkColor out of range: %+v", c)
+		}
+	})
+
+	t.Run("dark theme has link color", func(t *testing.T) {
+		c := DarkTheme.LinkColor
+		if c.R == 0 && c.G == 0 && c.B == 0 {
+			t.Error("DarkTheme.LinkColor is black (not set)")
+		}
+		if c.R > 255 || c.G > 255 || c.B > 255 {
+			t.Errorf("DarkTheme.LinkColor out of range: %+v", c)
+		}
+	})
+
+	t.Run("light and dark link colors differ", func(t *testing.T) {
+		l := LightTheme.LinkColor
+		d := DarkTheme.LinkColor
+		if l == d {
+			t.Error("LightTheme and DarkTheme have identical link colors")
+		}
+	})
+}
+
+func TestRenderLinkDirective(t *testing.T) {
+	// .link directive is the legacy-format way to add hyperlinks
+	slideContent := `Legacy Presentation
+Links test
+16 Feb 2026
+
+Author
+
+* Links Slide
+
+.link https://golang.org The Go Programming Language
+.link https://github.com GitHub
+`
+
+	tmpFile, err := os.CreateTemp("", "link-*.slide")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	err = conv.Convert(tmpFile.Name(), outputPath)
+	if err != nil {
+		t.Fatalf("Convert() failed for .link directive: %v", err)
+	}
+
+	info, err := os.Stat(outputPath)
+	if os.IsNotExist(err) {
+		t.Fatal("Output PDF file was not created")
+	}
+	if info.Size() < 1024 {
+		t.Errorf("PDF file too small: %d bytes", info.Size())
+	}
+}
+
+func TestRenderLinkDirectiveWithoutLabel(t *testing.T) {
+	// .link without a label — URL itself should be used as display text
+	slideContent := `Legacy Presentation
+Links test
+16 Feb 2026
+
+Author
+
+* Links Slide
+
+.link https://golang.org
+`
+
+	tmpFile, err := os.CreateTemp("", "link-nolabel-*.slide")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	err = conv.Convert(tmpFile.Name(), outputPath)
+	if err != nil {
+		t.Fatalf("Convert() failed for .link without label: %v", err)
+	}
+
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		t.Error("Output PDF file was not created")
+	}
+}
+
+func TestMarkdownLinksInParagraph(t *testing.T) {
+	// Markdown links [text](url) should produce clickable links in the PDF
+	slideContent := `# Markdown Links
+16 Feb 2026
+
+Author
+
+## Links Slide
+
+Visit [Go](https://golang.org) and [GitHub](https://github.com) for more.
+
+Plain text after the links.
+`
+
+	tmpFile, err := os.CreateTemp("", "mdlinks-*.slide")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	err = conv.Convert(tmpFile.Name(), outputPath)
+	if err != nil {
+		t.Fatalf("Convert() failed for markdown links: %v", err)
+	}
+
+	info, err := os.Stat(outputPath)
+	if os.IsNotExist(err) {
+		t.Fatal("Output PDF file was not created")
+	}
+	if info.Size() < 1024 {
+		t.Errorf("PDF file too small: %d bytes", info.Size())
+	}
+}
+
+func TestMarkdownLinksInList(t *testing.T) {
+	// Links inside list items should also work
+	slideContent := `# Markdown Links in Lists
+16 Feb 2026
+
+Author
+
+## Resources
+
+- [Go Documentation](https://pkg.go.dev)
+- [GitHub](https://github.com)
+- Plain item without link
+`
+
+	tmpFile, err := os.CreateTemp("", "mdlinks-list-*.slide")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	err = conv.Convert(tmpFile.Name(), outputPath)
+	if err != nil {
+		t.Fatalf("Convert() failed for markdown links in list: %v", err)
+	}
+
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		t.Error("Output PDF file was not created")
+	}
+}
+
+func TestRenderLinkUnit(t *testing.T) {
+	// Unit test calling renderLink directly
+	conv := NewConverter()
+	conv.pdf = gofpdf.New("L", "mm", "A4", "")
+	conv.pdf.AddPage()
+	conv.translator = conv.pdf.UnicodeTranslatorFromDescriptor("cp1251")
+	conv.pdf.SetFont("Helvetica", "", 18)
+
+	tests := []struct {
+		name    string
+		label   string
+		rawURL  string
+		startY  float64
+		wantAdv bool // y should advance
+	}{
+		{"with label", "Click here", "https://example.com", 50.0, true},
+		{"without label (URL as display)", "", "https://example.com", 70.0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			link := present.Link{Label: tt.label}
+			if tt.rawURL != "" {
+				u, err := url.Parse(tt.rawURL)
+				if err != nil {
+					t.Fatalf("failed to parse URL %q: %v", tt.rawURL, err)
+				}
+				link.URL = u
+			}
+
+			newY := conv.renderLink(link, tt.startY)
+			if tt.wantAdv && newY <= tt.startY {
+				t.Errorf("renderLink() did not advance Y: got %.1f, started at %.1f", newY, tt.startY)
 			}
 		})
 	}

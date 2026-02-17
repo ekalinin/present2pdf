@@ -59,6 +59,9 @@ type Theme struct {
 	CodeBackground RGB
 	CodeText       RGB
 	CodeLineNumber RGB
+
+	// Link color
+	LinkColor RGB
 }
 
 // Predefined themes
@@ -76,6 +79,7 @@ var (
 		CodeBackground:  RGB{40, 44, 52},    // Dark gray
 		CodeText:        RGB{171, 178, 191}, // Light gray
 		CodeLineNumber:  RGB{128, 128, 128}, // Gray
+		LinkColor:       RGB{0, 102, 204},   // Link blue
 	}
 
 	// DarkTheme is a dark theme
@@ -91,6 +95,7 @@ var (
 		CodeBackground:  RGB{30, 30, 46},    // Darker blue-gray
 		CodeText:        RGB{205, 214, 244}, // Light gray
 		CodeLineNumber:  RGB{108, 112, 134}, // Medium gray
+		LinkColor:       RGB{137, 180, 250}, // Light blue
 	}
 
 	// availableThemes maps theme names to themes
@@ -359,10 +364,43 @@ func (c *Converter) renderElement(elem present.Elem, y float64) float64 {
 		return c.renderCode(e, y)
 	case present.HTML:
 		return c.renderHTML(e, y)
+	case present.Link:
+		return c.renderLink(e, y)
 	default:
 		// Skip unsupported elements
 		return y
 	}
+}
+
+// renderLink renders a .link directive as a clickable hyperlink
+func (c *Converter) renderLink(link present.Link, y float64) float64 {
+	label := link.Label
+	urlStr := ""
+	if link.URL != nil {
+		urlStr = link.URL.String()
+	}
+	if label == "" {
+		label = urlStr
+	}
+
+	c.setTextFont("", 18)
+	c.pdf.SetTextColor(c.theme.LinkColor.R, c.theme.LinkColor.G, c.theme.LinkColor.B)
+
+	translatedLabel := c.translator(label)
+	labelWidth := c.pdf.GetStringWidth(translatedLabel)
+
+	c.pdf.SetXY(20, y)
+	c.pdf.CellFormat(labelWidth, 11, translatedLabel, "", 0, "L", false, 0, urlStr)
+
+	// Draw underline
+	c.pdf.SetDrawColor(c.theme.LinkColor.R, c.theme.LinkColor.G, c.theme.LinkColor.B)
+	c.pdf.SetLineWidth(0.2)
+	c.pdf.Line(20, y+10, 20+labelWidth, y+10)
+
+	// Restore normal text color
+	c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
+
+	return y + 15
 }
 
 // renderText renders text element
@@ -754,65 +792,74 @@ type TextFragment struct {
 	Text   string
 	Bold   bool
 	Italic bool
+	URL    string // non-empty for clickable links
 }
 
 // parseHTMLFormatting parses HTML text and extracts fragments with formatting
 func parseHTMLFormatting(html string) []TextFragment {
 	var fragments []TextFragment
 
-	// Decode HTML entities first
-	html = decodeHTMLEntities(html)
+	// Decode HTML entities first (but not inside tags — we do it per-text-node below)
+	// We process tags first, then decode entities in text nodes.
 
-	// Regular expression to match text and tags
+	// Regular expression to match text nodes and tags (including tags with attributes)
 	re := regexp.MustCompile(`([^<]+)|(<[^>]+>)`)
 	matches := re.FindAllString(html, -1)
 
 	bold := false
 	italic := false
+	currentURL := ""
 	var currentText strings.Builder
+
+	flushText := func() {
+		if currentText.Len() > 0 {
+			text := decodeHTMLEntities(currentText.String())
+			fragments = append(fragments, TextFragment{
+				Text:   text,
+				Bold:   bold,
+				Italic: italic,
+				URL:    currentURL,
+			})
+			currentText.Reset()
+		}
+	}
+
+	// Regex to extract href from <a ...> tag
+	hrefRe := regexp.MustCompile(`(?i)<a\s[^>]*href=["']([^"']+)["'][^>]*>`)
 
 	for _, match := range matches {
 		if strings.HasPrefix(match, "<") {
-			// Save current text if any
-			if currentText.Len() > 0 {
-				fragments = append(fragments, TextFragment{
-					Text:   currentText.String(),
-					Bold:   bold,
-					Italic: italic,
-				})
-				currentText.Reset()
-			}
+			flushText()
 
 			// Process tag
-			switch match {
-			case "<strong>", "<b>":
+			lowerMatch := strings.ToLower(match)
+			switch {
+			case lowerMatch == "<strong>" || lowerMatch == "<b>":
 				bold = true
-			case "</strong>", "</b>":
+			case lowerMatch == "</strong>" || lowerMatch == "</b>":
 				bold = false
-			case "<em>", "<i>":
+			case lowerMatch == "<em>" || lowerMatch == "<i>":
 				italic = true
-			case "</em>", "</i>":
+			case lowerMatch == "</em>" || lowerMatch == "</i>":
 				italic = false
+			case strings.HasPrefix(lowerMatch, "<a "):
+				if m := hrefRe.FindStringSubmatch(match); len(m) > 1 {
+					currentURL = m[1]
+				}
+			case lowerMatch == "</a>":
+				currentURL = ""
 			}
 		} else {
-			// Add text
 			currentText.WriteString(match)
 		}
 	}
 
-	// Add remaining text
-	if currentText.Len() > 0 {
-		fragments = append(fragments, TextFragment{
-			Text:   currentText.String(),
-			Bold:   bold,
-			Italic: italic,
-		})
-	}
+	flushText()
 
 	return fragments
 }
 
-// renderFormattedText renders text with bold and italic formatting
+// renderFormattedText renders text with bold, italic formatting and clickable links
 // Bold/italic — visual simulation (Helvetica has no B/I variants for Cyrillic)
 func (c *Converter) renderFormattedText(fragments []TextFragment, x, y, maxWidth, lineHeight float64) float64 {
 	const (
@@ -825,6 +872,12 @@ func (c *Converter) renderFormattedText(fragments []TextFragment, x, y, maxWidth
 	c.setTextFont("", 18)
 
 	for _, fragment := range fragments {
+		isLink := fragment.URL != ""
+
+		if isLink {
+			c.pdf.SetTextColor(c.theme.LinkColor.R, c.theme.LinkColor.G, c.theme.LinkColor.B)
+		}
+
 		words := strings.Fields(fragment.Text)
 		for _, word := range words {
 			translatedWord := c.translator(word + " ")
@@ -837,7 +890,17 @@ func (c *Converter) renderFormattedText(fragments []TextFragment, x, y, maxWidth
 
 			drawWord := func() {
 				c.pdf.SetXY(currentX, currentY)
-				c.pdf.Cell(wordWidth, lineHeight, translatedWord)
+				if isLink {
+					// CellFormat with linkStr makes the cell area a clickable hyperlink
+					c.pdf.CellFormat(wordWidth, lineHeight, translatedWord, "", 0, "L", false, 0, fragment.URL)
+					// Draw underline manually
+					c.pdf.SetDrawColor(c.theme.LinkColor.R, c.theme.LinkColor.G, c.theme.LinkColor.B)
+					c.pdf.SetLineWidth(0.2)
+					underlineY := currentY + lineHeight - 1
+					c.pdf.Line(currentX, underlineY, currentX+wordWidth, underlineY)
+				} else {
+					c.pdf.Cell(wordWidth, lineHeight, translatedWord)
+				}
 			}
 
 			if fragment.Italic {
@@ -848,7 +911,11 @@ func (c *Converter) renderFormattedText(fragments []TextFragment, x, y, maxWidth
 			if fragment.Bold {
 				drawWord()
 				c.pdf.SetXY(currentX+boldOffset, currentY)
-				c.pdf.Cell(wordWidth, lineHeight, translatedWord)
+				if isLink {
+					c.pdf.CellFormat(wordWidth, lineHeight, translatedWord, "", 0, "L", false, 0, fragment.URL)
+				} else {
+					c.pdf.Cell(wordWidth, lineHeight, translatedWord)
+				}
 			} else {
 				drawWord()
 			}
@@ -858,6 +925,11 @@ func (c *Converter) renderFormattedText(fragments []TextFragment, x, y, maxWidth
 			}
 
 			currentX += wordWidth
+		}
+
+		if isLink {
+			// Restore normal text color
+			c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
 		}
 	}
 
