@@ -8,10 +8,9 @@ A command-line application in Go for converting presentations from `.slide` form
 - ✅ Support for headers and text
 - ✅ Bulleted lists
 - ✅ Code blocks with syntax highlighting
-- ✅ **Full UTF-8 and Cyrillic support** (Russian, Ukrainian, Belarusian, etc.)
+- ✅ Full UTF-8 support
 - ✅ Customizable code highlighting themes (80+ themes available)
 - ✅ PDF color themes (light and dark)
-- ✅ Author and date information
 - ✅ Beautiful slide design
 - ✅ Simple command-line interface
 
@@ -157,24 +156,28 @@ make example
 ./present2pdf -input example/cyrillic_demo.slide -output example/cyrillic_demo_dark.pdf -theme dark
 ```
 
-## UTF-8 and Cyrillic Support
+## UTF-8 Support
 
 The tool has **full UTF-8 and Cyrillic support** (Russian, Ukrainian, Belarusian, etc.) in all elements:
 
 - ✅ Titles and subtitles in Cyrillic
-- ✅ Slide content in Cyrillic
-- ✅ Lists with Cyrillic text
+- ✅ Slide content in Cyrillic with **bold** and _italic_ formatting
+- ✅ Lists with Cyrillic text and formatting
 - ✅ **Code blocks with Cyrillic support** (comments, strings, variable names)
 
 See `example/cyrillic_demo.slide` for a complete demonstration.
 
-**Note:** Code blocks use **JetBrains Mono** font - a true monospace font with excellent Cyrillic support. For details see [MONOSPACE_FONT.md](MONOSPACE_FONT.md).
+**Fonts used:**
+- **Helvetica** (Arial) - main text font with full Cyrillic support; bold/italic simulated visually
+- **JetBrains Mono** - monospace font for code blocks with excellent Cyrillic support
+
+For details about code fonts see [MONOSPACE_FONT.md](MONOSPACE_FONT.md).
 
 ## Supported Elements
 
 - ✅ Slide titles
-- ✅ Text blocks
-- ✅ Bulleted lists
+- ✅ Text blocks with **bold** and _italic_ formatting
+- ✅ Bulleted lists with formatting
 - ✅ Code blocks with syntax highlighting
 - ✅ Author information
 - ✅ Dates

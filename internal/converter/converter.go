@@ -165,6 +165,17 @@ func GetAvailableThemes() []string {
 	return themes
 }
 
+// setTextFont sets the text font with the given style and size
+// Uses Helvetica (единственный с корректной кириллицей). Bold/italic — визуальная имитация
+func (c *Converter) setTextFont(style string, size float64) {
+	c.pdf.SetFont("Helvetica", "", size)
+}
+
+// setCodeFont sets the code font with the given style and size
+func (c *Converter) setCodeFont(style string, size float64) {
+	c.pdf.SetFont("JetBrainsMono", style, size)
+}
+
 // Convert converts a .slide file to PDF
 func (c *Converter) Convert(inputPath, outputPath string) error {
 	// Read the slide file
@@ -194,13 +205,13 @@ func (c *Converter) Convert(inputPath, outputPath string) error {
 
 	// Write embedded font files to temp directory
 	fontFiles := map[string][]byte{
-		"cp1251.map":                   cp1251Map,
-		"helvetica_1251.json":          helvetica1251JSON,
-		"helvetica_1251.z":             helvetica1251Z,
-		"jetbrainsmono_1251.json":      jetbrainsmono1251JSON,
-		"jetbrainsmono_1251.z":         jetbrainsmono1251Z,
-		"jetbrainsmono_bold_1251.json": jetbrainsmono1251BoldJSON,
-		"jetbrainsmono_bold_1251.z":    jetbrainsmono1251BoldZ,
+		"cp1251.map":                       cp1251Map,
+		"helvetica_1251.json":              helvetica1251JSON,
+		"helvetica_1251.z":                 helvetica1251Z,
+		"jetbrainsmono_1251.json":          jetbrainsmono1251JSON,
+		"jetbrainsmono_1251.z":             jetbrainsmono1251Z,
+		"jetbrainsmono_bold_1251.json":     jetbrainsmono1251BoldJSON,
+		"jetbrainsmono_bold_1251.z":        jetbrainsmono1251BoldZ,
 	}
 
 	for filename, content := range fontFiles {
@@ -254,14 +265,14 @@ func (c *Converter) renderTitleSlide(doc *present.Doc) {
 
 	// Title
 	c.pdf.SetTextColor(c.theme.TitleText.R, c.theme.TitleText.G, c.theme.TitleText.B)
-	c.pdf.SetFont("Helvetica", "B", 36)
+	c.setTextFont("B", 36)
 	c.pdf.SetXY(20, 70)
 	c.pdf.MultiCell(257, 15, c.translator(doc.Title), "", "C", false)
 
 	// Subtitle
 	if doc.Subtitle != "" {
 		c.pdf.SetTextColor(c.theme.TitleSubtext.R, c.theme.TitleSubtext.G, c.theme.TitleSubtext.B)
-		c.pdf.SetFont("Helvetica", "", 20)
+		c.setTextFont("", 20)
 		c.pdf.SetXY(20, 95)
 		c.pdf.MultiCell(257, 10, c.translator(doc.Subtitle), "", "C", false)
 	}
@@ -269,7 +280,7 @@ func (c *Converter) renderTitleSlide(doc *present.Doc) {
 	// Authors
 	if len(doc.Authors) > 0 {
 		c.pdf.SetTextColor(c.theme.TitleSubtext.R, c.theme.TitleSubtext.G, c.theme.TitleSubtext.B)
-		c.pdf.SetFont("Helvetica", "", 14)
+		c.setTextFont("", 14)
 		y := 130.0
 		for _, author := range doc.Authors {
 			authorText := c.extractAuthorText(author)
@@ -284,7 +295,7 @@ func (c *Converter) renderTitleSlide(doc *present.Doc) {
 	// Date
 	if !doc.Time.IsZero() {
 		c.pdf.SetTextColor(c.theme.TitleDate.R, c.theme.TitleDate.G, c.theme.TitleDate.B)
-		c.pdf.SetFont("Helvetica", "I", 12)
+		c.setTextFont("I", 12)
 		c.pdf.SetXY(20, 180)
 		c.pdf.MultiCell(257, 6, c.translator(doc.Time.Format("January 2, 2006")), "", "C", false)
 	}
@@ -300,7 +311,7 @@ func (c *Converter) renderSlide(section present.Section) {
 
 	// Title
 	c.pdf.SetTextColor(c.theme.SlideTitle.R, c.theme.SlideTitle.G, c.theme.SlideTitle.B)
-	c.pdf.SetFont("Helvetica", "B", 24)
+	c.setTextFont("B", 24)
 	c.pdf.SetXY(20, 15)
 	c.pdf.MultiCell(257, 10, c.translator(section.Title), "", "L", false)
 
@@ -349,7 +360,7 @@ func (c *Converter) renderText(text present.Text, y float64) float64 {
 	}
 
 	// Regular text rendering
-	c.pdf.SetFont("Helvetica", "", 14)
+	c.setTextFont("", 14)
 	c.pdf.SetXY(20, y)
 
 	// For regular text, join with spaces
@@ -367,7 +378,7 @@ func (c *Converter) renderMarkdownCodeBlock(content string, y float64) float64 {
 
 	if len(match) < 3 {
 		// No valid code block found, render as plain text
-		c.pdf.SetFont("Helvetica", "", 14)
+		c.setTextFont("", 14)
 		c.pdf.SetXY(20, y)
 		c.pdf.MultiCell(257, 7, c.translator(content), "", "L", false)
 		return y + 10
@@ -405,7 +416,7 @@ func (c *Converter) renderMarkdownCodeBlock(content string, y float64) float64 {
 	for i, line := range lines {
 		if i >= maxLines {
 			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
-			c.pdf.SetFont("JetBrainsMono", "", 9)
+			c.setCodeFont("", 9)
 			c.pdf.SetXY(25, lineY)
 			c.pdf.Cell(0, 5, c.translator("..."))
 			break
@@ -420,7 +431,7 @@ func (c *Converter) renderMarkdownCodeBlock(content string, y float64) float64 {
 
 // renderList renders list element
 func (c *Converter) renderList(list present.List, y float64) float64 {
-	c.pdf.SetFont("Helvetica", "", 12)
+	c.setTextFont("", 12)
 
 	for _, item := range list.Bullet {
 		c.pdf.SetXY(25, y)
@@ -474,7 +485,7 @@ func (c *Converter) renderCode(code present.Code, y float64) float64 {
 	for i, line := range lines {
 		if i >= maxLines {
 			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
-			c.pdf.SetFont("JetBrainsMono", "", 9)
+			c.setCodeFont("", 9)
 			c.pdf.SetXY(25, lineY)
 			c.pdf.Cell(0, 5, c.translator("..."))
 			break
@@ -546,23 +557,24 @@ func (c *Converter) renderHTML(html present.HTML, y float64) float64 {
 // renderHTMLParagraphs renders multiple HTML paragraphs
 func (c *Converter) renderHTMLParagraphs(html string, y float64) float64 {
 	// Extract all paragraphs
-	re := regexp.MustCompile(`<p>(.*?)</p>`)
+	re := regexp.MustCompile(`(?s)<p>(.*?)</p>`)
 	matches := re.FindAllStringSubmatch(html, -1)
-
-	c.pdf.SetFont("Helvetica", "", 14)
 
 	for _, match := range matches {
 		if len(match) > 1 {
-			text := stripHTMLTags(match[1])
-			text = strings.TrimSpace(text)
+			paragraphHTML := strings.TrimSpace(match[1])
 
-			if text == "" {
+			if paragraphHTML == "" {
 				continue
 			}
 
-			c.pdf.SetXY(20, y)
-			c.pdf.MultiCell(257, 7, c.translator(text), "", "L", false)
-			y += 10
+			// Parse HTML formatting
+			fragments := parseHTMLFormatting(paragraphHTML)
+
+			// Render formatted text
+			c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
+			y = c.renderFormattedText(fragments, 20, y, 257, 7)
+			y += 3 // Extra spacing between paragraphs
 		}
 	}
 
@@ -597,20 +609,26 @@ func (c *Converter) renderHTMLMixed(html string, y float64) float64 {
 
 // renderHTMLList renders HTML list
 func (c *Converter) renderHTMLList(html string, y float64) float64 {
-	c.pdf.SetFont("Helvetica", "", 12)
-
 	// Extract list items
-	re := regexp.MustCompile(`<li>(.*?)</li>`)
+	re := regexp.MustCompile(`(?s)<li>(.*?)</li>`)
 	matches := re.FindAllStringSubmatch(html, -1)
 
 	for _, match := range matches {
 		if len(match) > 1 {
-			item := stripHTMLTags(match[1])
-			item = strings.TrimSpace(item)
+			itemHTML := strings.TrimSpace(match[1])
 
+			// Parse HTML formatting
+			fragments := parseHTMLFormatting(itemHTML)
+
+			// Render bullet
+			c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
+			c.setTextFont("", 12)
 			c.pdf.SetXY(25, y)
-			c.pdf.MultiCell(247, 6, c.translator("- "+item), "", "L", false)
-			y += 8
+			c.pdf.Cell(5, 6, c.translator("- "))
+
+			// Render formatted text
+			y = c.renderFormattedText(fragments, 30, y, 247, 6)
+			y += 2
 		}
 	}
 
@@ -667,7 +685,7 @@ func (c *Converter) renderHTMLCode(html string, y float64) float64 {
 	for i, line := range lines {
 		if i >= maxLines {
 			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
-			c.pdf.SetFont("JetBrainsMono", "", 9)
+			c.setCodeFont("", 9)
 			c.pdf.SetXY(25, lineY)
 			c.pdf.Cell(0, 5, c.translator("..."))
 			break
@@ -689,7 +707,7 @@ func (c *Converter) renderHTMLPlainText(html string, y float64) float64 {
 		return y
 	}
 
-	c.pdf.SetFont("Helvetica", "", 12)
+	c.setTextFont("", 12)
 	c.pdf.SetXY(20, y)
 	c.pdf.MultiCell(257, 6, c.translator(text), "", "L", false)
 
@@ -706,6 +724,121 @@ func stripHTMLTags(html string) string {
 	text = decodeHTMLEntities(text)
 
 	return text
+}
+
+// TextFragment represents a piece of text with formatting
+type TextFragment struct {
+	Text   string
+	Bold   bool
+	Italic bool
+}
+
+// parseHTMLFormatting parses HTML text and extracts fragments with formatting
+func parseHTMLFormatting(html string) []TextFragment {
+	var fragments []TextFragment
+
+	// Decode HTML entities first
+	html = decodeHTMLEntities(html)
+
+	// Regular expression to match text and tags
+	re := regexp.MustCompile(`([^<]+)|(<[^>]+>)`)
+	matches := re.FindAllString(html, -1)
+
+	bold := false
+	italic := false
+	var currentText strings.Builder
+
+	for _, match := range matches {
+		if strings.HasPrefix(match, "<") {
+			// Save current text if any
+			if currentText.Len() > 0 {
+				fragments = append(fragments, TextFragment{
+					Text:   currentText.String(),
+					Bold:   bold,
+					Italic: italic,
+				})
+				currentText.Reset()
+			}
+
+			// Process tag
+			switch match {
+			case "<strong>", "<b>":
+				bold = true
+			case "</strong>", "</b>":
+				bold = false
+			case "<em>", "<i>":
+				italic = true
+			case "</em>", "</i>":
+				italic = false
+			}
+		} else {
+			// Add text
+			currentText.WriteString(match)
+		}
+	}
+
+	// Add remaining text
+	if currentText.Len() > 0 {
+		fragments = append(fragments, TextFragment{
+			Text:   currentText.String(),
+			Bold:   bold,
+			Italic: italic,
+		})
+	}
+
+	return fragments
+}
+
+// renderFormattedText renders text with bold and italic formatting
+// Bold/italic — визуальная имитация (Helvetica не имеет B/I для кириллицы)
+func (c *Converter) renderFormattedText(fragments []TextFragment, x, y, maxWidth, lineHeight float64) float64 {
+	const (
+		boldOffset   = 0.2  // смещение для имитации жирного (мм)
+		italicSkew   = 12.0 // угол наклона для имитации курсива (градусы)
+	)
+	currentX := x
+	currentY := y
+
+	c.setTextFont("", 12)
+
+	for _, fragment := range fragments {
+		words := strings.Fields(fragment.Text)
+		for _, word := range words {
+			translatedWord := c.translator(word + " ")
+			wordWidth := c.pdf.GetStringWidth(translatedWord)
+
+			if currentX+wordWidth > x+maxWidth && currentX > x {
+				currentY += lineHeight
+				currentX = x
+			}
+
+			drawWord := func() {
+				c.pdf.SetXY(currentX, currentY)
+				c.pdf.Cell(wordWidth, lineHeight, translatedWord)
+			}
+
+			if fragment.Italic {
+				c.pdf.TransformBegin()
+				c.pdf.TransformSkew(italicSkew, 0, currentX, currentY)
+			}
+
+			if fragment.Bold {
+				drawWord()
+				c.pdf.SetXY(currentX+boldOffset, currentY)
+				c.pdf.Cell(wordWidth, lineHeight, translatedWord)
+			} else {
+				drawWord()
+			}
+
+			if fragment.Italic {
+				c.pdf.TransformEnd()
+			}
+
+			currentX += wordWidth
+		}
+	}
+
+	return currentY + lineHeight
 }
 
 // decodeHTMLEntities decodes common HTML entities
@@ -833,7 +966,7 @@ func (c *Converter) renderHighlightedLine(tokens []Token, x, y float64) {
 		value := c.translator(token.Value)
 
 		// Use JetBrains Mono for code - monospace font with Cyrillic support
-		c.pdf.SetFont("JetBrainsMono", "", 9)
+		c.setCodeFont("", 9)
 
 		// Get width of the text to advance X position
 		width := c.pdf.GetStringWidth(value)
@@ -904,7 +1037,7 @@ func (c *Converter) renderCodePlain(code string, y float64) float64 {
 	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
 
 	// Code text - use JetBrains Mono for monospace with Cyrillic support
-	c.pdf.SetFont("JetBrainsMono", "", 9)
+	c.setCodeFont("", 9)
 	c.pdf.SetTextColor(c.theme.CodeText.R, c.theme.CodeText.G, c.theme.CodeText.B)
 
 	lineY := y + 2
