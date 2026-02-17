@@ -24,6 +24,18 @@ var helvetica1251JSON []byte
 //go:embed font/helvetica_1251.z
 var helvetica1251Z []byte
 
+//go:embed font/jetbrainsmono_1251.json
+var jetbrainsmono1251JSON []byte
+
+//go:embed font/jetbrainsmono_1251.z
+var jetbrainsmono1251Z []byte
+
+//go:embed font/jetbrainsmono_bold_1251.json
+var jetbrainsmono1251BoldJSON []byte
+
+//go:embed font/jetbrainsmono_bold_1251.z
+var jetbrainsmono1251BoldZ []byte
+
 // RGB represents an RGB color
 type RGB struct {
 	R, G, B int
@@ -182,9 +194,13 @@ func (c *Converter) Convert(inputPath, outputPath string) error {
 
 	// Write embedded font files to temp directory
 	fontFiles := map[string][]byte{
-		"cp1251.map":          cp1251Map,
-		"helvetica_1251.json": helvetica1251JSON,
-		"helvetica_1251.z":    helvetica1251Z,
+		"cp1251.map":                   cp1251Map,
+		"helvetica_1251.json":          helvetica1251JSON,
+		"helvetica_1251.z":             helvetica1251Z,
+		"jetbrainsmono_1251.json":      jetbrainsmono1251JSON,
+		"jetbrainsmono_1251.z":         jetbrainsmono1251Z,
+		"jetbrainsmono_bold_1251.json": jetbrainsmono1251BoldJSON,
+		"jetbrainsmono_bold_1251.z":    jetbrainsmono1251BoldZ,
 	}
 
 	for filename, content := range fontFiles {
@@ -197,10 +213,14 @@ func (c *Converter) Convert(inputPath, outputPath string) error {
 	c.pdf = gofpdf.New("L", "mm", "A4", tmpDir)
 	c.pdf.SetAutoPageBreak(false, 0)
 
-	// Add Cyrillic font with cp1251 encoding
+	// Add Cyrillic fonts with cp1251 encoding
 	c.pdf.AddFont("Helvetica", "", "helvetica_1251.json")
 	c.pdf.AddFont("Helvetica", "B", "helvetica_1251.json")
 	c.pdf.AddFont("Helvetica", "I", "helvetica_1251.json")
+
+	// Add JetBrains Mono for code blocks
+	c.pdf.AddFont("JetBrainsMono", "", "jetbrainsmono_1251.json")
+	c.pdf.AddFont("JetBrainsMono", "B", "jetbrainsmono_bold_1251.json")
 
 	// Initialize UTF-8 translation for Cyrillic (cp1251)
 	tr := c.pdf.UnicodeTranslatorFromDescriptor("cp1251")
@@ -320,13 +340,82 @@ func (c *Converter) renderElement(elem present.Elem, y float64) float64 {
 
 // renderText renders text element
 func (c *Converter) renderText(text present.Text, y float64) float64 {
+	// Check if this text contains markdown code blocks (```)
+	content := strings.Join(text.Lines, "\n")
+
+	// Check for markdown code block markers
+	if strings.Contains(content, "```") {
+		return c.renderMarkdownCodeBlock(content, y)
+	}
+
+	// Regular text rendering
 	c.pdf.SetFont("Helvetica", "", 14)
 	c.pdf.SetXY(20, y)
 
-	content := strings.Join(text.Lines, " ")
+	// For regular text, join with spaces
+	content = strings.Join(text.Lines, " ")
 	c.pdf.MultiCell(257, 7, c.translator(content), "", "L", false)
 
 	return y + 10
+}
+
+// renderMarkdownCodeBlock renders markdown code blocks (```)
+func (c *Converter) renderMarkdownCodeBlock(content string, y float64) float64 {
+	// Extract code block: ```language\ncode\n```
+	re := regexp.MustCompile("(?s)```(\\w*)\\s*\n(.*?)```")
+	match := re.FindStringSubmatch(content)
+
+	if len(match) < 3 {
+		// No valid code block found, render as plain text
+		c.pdf.SetFont("Helvetica", "", 14)
+		c.pdf.SetXY(20, y)
+		c.pdf.MultiCell(257, 7, c.translator(content), "", "L", false)
+		return y + 10
+	}
+
+	language := match[1]
+	if language == "" {
+		language = "go" // default
+	}
+	codeText := strings.TrimSpace(match[2])
+
+	// Highlight the code
+	tokens, err := c.highlightCode(codeText, language)
+	if err != nil {
+		// Fallback to plain rendering
+		return c.renderCodePlain(codeText, y)
+	}
+
+	// Split tokens into lines
+	lines := splitTokensIntoLines(tokens)
+
+	// Calculate code block height
+	codeHeight := float64(len(lines)) * 5
+	if codeHeight > 80 {
+		codeHeight = 80
+	}
+
+	// Background for code
+	c.pdf.SetFillColor(c.theme.CodeBackground.R, c.theme.CodeBackground.G, c.theme.CodeBackground.B)
+	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
+
+	// Render lines with syntax highlighting
+	lineY := y + 2
+	maxLines := 12
+	for i, line := range lines {
+		if i >= maxLines {
+			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
+			c.pdf.SetFont("JetBrainsMono", "", 9)
+			c.pdf.SetXY(25, lineY)
+			c.pdf.Cell(0, 5, c.translator("..."))
+			break
+		}
+		c.renderHighlightedLine(line, 25, lineY)
+		lineY += 5
+	}
+
+	c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
+	return y + codeHeight + 10
 }
 
 // renderList renders list element
@@ -385,7 +474,7 @@ func (c *Converter) renderCode(code present.Code, y float64) float64 {
 	for i, line := range lines {
 		if i >= maxLines {
 			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
-			c.pdf.SetFont("Courier", "", 10)
+			c.pdf.SetFont("JetBrainsMono", "", 9)
 			c.pdf.SetXY(25, lineY)
 			c.pdf.Cell(0, 5, c.translator("..."))
 			break
@@ -414,26 +503,38 @@ func (c *Converter) extractAuthorText(author present.Author) string {
 func (c *Converter) renderHTML(html present.HTML, y float64) float64 {
 	htmlContent := string(html.HTML)
 
-	// Handle code blocks first (most specific) - they should be standalone
-	if strings.Contains(htmlContent, "<pre><code>") {
-		return c.renderHTMLCode(htmlContent, y)
-	}
-
 	// Check if content contains multiple element types
+	// Note: use "<pre><code" (without >) to match both <pre><code> and <pre><code class="...">
+	hasCode := strings.Contains(htmlContent, "<pre><code")
 	hasLists := strings.Contains(htmlContent, "<ul>") || strings.Contains(htmlContent, "<ol>")
 	hasParagraphs := strings.Contains(htmlContent, "<p>")
 
-	// If content has both lists and paragraphs, render them in order
-	if hasLists && hasParagraphs {
+	// Count how many different types we have
+	typeCount := 0
+	if hasCode {
+		typeCount++
+	}
+	if hasLists {
+		typeCount++
+	}
+	if hasParagraphs {
+		typeCount++
+	}
+
+	// If content has multiple element types, render them in order
+	if typeCount > 1 {
 		return c.renderHTMLMixed(htmlContent, y)
 	}
 
-	// Handle lists only
+	// Handle single element types
+	if hasCode {
+		return c.renderHTMLCode(htmlContent, y)
+	}
+
 	if hasLists {
 		return c.renderHTMLList(htmlContent, y)
 	}
 
-	// Handle paragraphs only
 	if hasParagraphs {
 		return c.renderHTMLParagraphs(htmlContent, y)
 	}
@@ -468,11 +569,11 @@ func (c *Converter) renderHTMLParagraphs(html string, y float64) float64 {
 	return y
 }
 
-// renderHTMLMixed renders HTML content with mixed paragraphs and lists in order
+// renderHTMLMixed renders HTML content with mixed paragraphs, lists, and code blocks in order
 func (c *Converter) renderHTMLMixed(html string, y float64) float64 {
 	// Split by major HTML tags while preserving them
-	// Match: <p>...</p>, <ul>...</ul>, <ol>...</ol>
-	re := regexp.MustCompile(`(?s)(<p>.*?</p>|<ul>.*?</ul>|<ol>.*?</ol>)`)
+	// Match: <p>...</p>, <ul>...</ul>, <ol>...</ol>, <pre><code>...</code></pre>
+	re := regexp.MustCompile(`(?s)(<pre><code.*?</code></pre>|<p>.*?</p>|<ul>.*?</ul>|<ol>.*?</ol>)`)
 	matches := re.FindAllString(html, -1)
 
 	for _, match := range matches {
@@ -482,7 +583,9 @@ func (c *Converter) renderHTMLMixed(html string, y float64) float64 {
 		}
 
 		// Determine element type and render accordingly
-		if strings.HasPrefix(match, "<p>") {
+		if strings.HasPrefix(match, "<pre><code") {
+			y = c.renderHTMLCode(match, y)
+		} else if strings.HasPrefix(match, "<p>") {
 			y = c.renderHTMLParagraphs(match, y)
 		} else if strings.HasPrefix(match, "<ul>") || strings.HasPrefix(match, "<ol>") {
 			y = c.renderHTMLList(match, y)
@@ -517,7 +620,8 @@ func (c *Converter) renderHTMLList(html string, y float64) float64 {
 // renderHTMLCode renders HTML code block
 func (c *Converter) renderHTMLCode(html string, y float64) float64 {
 	// Extract code content - use (?s) flag to make . match newlines
-	re := regexp.MustCompile(`(?s)<pre><code>(.*?)</code></pre>`)
+	// Updated regex to handle optional attributes in <code> tag
+	re := regexp.MustCompile(`(?s)<pre><code[^>]*>(.*?)</code></pre>`)
 	match := re.FindStringSubmatch(html)
 
 	if len(match) < 2 {
@@ -563,7 +667,7 @@ func (c *Converter) renderHTMLCode(html string, y float64) float64 {
 	for i, line := range lines {
 		if i >= maxLines {
 			c.pdf.SetTextColor(c.theme.CodeLineNumber.R, c.theme.CodeLineNumber.G, c.theme.CodeLineNumber.B)
-			c.pdf.SetFont("Courier", "", 10)
+			c.pdf.SetFont("JetBrainsMono", "", 9)
 			c.pdf.SetXY(25, lineY)
 			c.pdf.Cell(0, 5, c.translator("..."))
 			break
@@ -720,7 +824,6 @@ func splitTokensIntoLines(tokens []Token) [][]Token {
 // renderHighlightedLine renders a line of syntax-highlighted tokens
 func (c *Converter) renderHighlightedLine(tokens []Token, x, y float64) {
 	currentX := x
-	c.pdf.SetFont("Courier", "", 10)
 
 	for _, token := range tokens {
 		c.pdf.SetTextColor(token.Color[0], token.Color[1], token.Color[2])
@@ -728,6 +831,9 @@ func (c *Converter) renderHighlightedLine(tokens []Token, x, y float64) {
 
 		// Translate token value for UTF-8 support
 		value := c.translator(token.Value)
+
+		// Use JetBrains Mono for code - monospace font with Cyrillic support
+		c.pdf.SetFont("JetBrainsMono", "", 9)
 
 		// Get width of the text to advance X position
 		width := c.pdf.GetStringWidth(value)
@@ -797,8 +903,8 @@ func (c *Converter) renderCodePlain(code string, y float64) float64 {
 
 	c.pdf.Rect(20, y, 257, codeHeight+4, "F")
 
-	// Code text
-	c.pdf.SetFont("Courier", "", 10)
+	// Code text - use JetBrains Mono for monospace with Cyrillic support
+	c.pdf.SetFont("JetBrainsMono", "", 9)
 	c.pdf.SetTextColor(c.theme.CodeText.R, c.theme.CodeText.G, c.theme.CodeText.B)
 
 	lineY := y + 2

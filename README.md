@@ -158,38 +158,16 @@ make example
 
 ## UTF-8 and Cyrillic Support
 
-The tool supports UTF-8 encoding and Cyrillic characters (Russian, Ukrainian, Belarusian) in text elements:
+The tool has **full UTF-8 and Cyrillic support** (Russian, Ukrainian, Belarusian, etc.) in all elements:
 
 - ✅ Titles and subtitles in Cyrillic
 - ✅ Slide content in Cyrillic
 - ✅ Lists with Cyrillic text
-- ⚠️ Code blocks use Courier font without Cyrillic support
+- ✅ **Code blocks with Cyrillic support** (comments, strings, variable names)
 
-**Example:**
+See `example/cyrillic_demo.slide` for a complete demonstration.
 
-```
-# Моя Презентация
-Подзаголовок на русском
-16 Feb 2026
-
-Иван Иванов
-
-## Введение
-
-Презентация с поддержкой кириллицы.
-
-- Первый пункт
-- Второй пункт
-
-## Код (комментарии на английском)
-
-	// Greeting function
-	func greet(name string) {
-		fmt.Println("Hello,", name)
-	}
-```
-
-**Note:** Cyrillic text in code blocks is not supported. Use English for code comments and identifiers.
+**Note:** Code blocks use **JetBrains Mono** font - a true monospace font with excellent Cyrillic support. For details see [MONOSPACE_FONT.md](MONOSPACE_FONT.md).
 
 ## Supported Elements
 
