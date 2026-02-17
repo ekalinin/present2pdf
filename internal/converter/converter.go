@@ -1,10 +1,10 @@
 package converter
 
 import (
+	"bytes"
 	_ "embed"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/jung-kurt/gofpdf"
 	"golang.org/x/tools/present"
@@ -85,6 +85,52 @@ func NewConverter(opts ...Option) *Converter {
 	return c
 }
 
+// initPDF creates a new PDF instance, writes embedded fonts to a temp directory,
+// registers fonts and initializes the Cyrillic translator.
+// Returns a cleanup function that removes the temp directory.
+func (c *Converter) initPDF() (func(), error) {
+	tmpDir, err := os.MkdirTemp("", "present2pdf-fonts-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+
+	// Write embedded font files to temp directory
+	fontFiles := map[string][]byte{
+		"cp1251.map":                   cp1251Map,
+		"helvetica_1251.json":          helvetica1251JSON,
+		"helvetica_1251.z":             helvetica1251Z,
+		"jetbrainsmono_1251.json":      jetbrainsmono1251JSON,
+		"jetbrainsmono_1251.z":         jetbrainsmono1251Z,
+		"jetbrainsmono_bold_1251.json": jetbrainsmono1251BoldJSON,
+		"jetbrainsmono_bold_1251.z":    jetbrainsmono1251BoldZ,
+	}
+
+	for filename, data := range fontFiles {
+		if err := os.WriteFile(tmpDir+"/"+filename, data, 0644); err != nil {
+			os.RemoveAll(tmpDir)
+			return nil, fmt.Errorf("failed to write font file %s: %w", filename, err)
+		}
+	}
+
+	c.pdf = gofpdf.New("L", "mm", "A4", tmpDir)
+	c.pdf.SetAutoPageBreak(false, 0)
+
+	fonts := []struct{ family, style, file string }{
+		{"Helvetica", "", "helvetica_1251.json"},
+		{"Helvetica", "B", "helvetica_1251.json"},
+		{"Helvetica", "I", "helvetica_1251.json"},
+		{"JetBrainsMono", "", "jetbrainsmono_1251.json"},
+		{"JetBrainsMono", "B", "jetbrainsmono_bold_1251.json"},
+	}
+	for _, f := range fonts {
+		c.pdf.AddFont(f.family, f.style, f.file)
+	}
+
+	c.translator = c.pdf.UnicodeTranslatorFromDescriptor("cp1251")
+
+	return func() { os.RemoveAll(tmpDir) }, nil
+}
+
 // setTextFont sets the text font with the given style and size
 // Uses Helvetica (the only one with proper Cyrillic support). Bold/italic — visual simulation
 func (c *Converter) setTextFont(style string, size float64) {
@@ -111,53 +157,16 @@ func (c *Converter) Convert(inputPath, outputPath string) error {
 		},
 	}
 
-	doc, err := ctx.Parse(strings.NewReader(string(content)), inputPath, 0)
+	doc, err := ctx.Parse(bytes.NewReader(content), inputPath, 0)
 	if err != nil {
 		return fmt.Errorf("failed to parse presentation: %w", err)
 	}
 
-	// Create temporary directory for font files
-	tmpDir, err := os.MkdirTemp("", "present2pdf-fonts-*")
+	cleanup, err := c.initPDF()
 	if err != nil {
-		return fmt.Errorf("failed to create temp dir: %w", err)
+		return err
 	}
-	defer os.RemoveAll(tmpDir)
-
-	// Write embedded font files to temp directory
-	fontFiles := map[string][]byte{
-		"cp1251.map":                   cp1251Map,
-		"helvetica_1251.json":          helvetica1251JSON,
-		"helvetica_1251.z":             helvetica1251Z,
-		"jetbrainsmono_1251.json":      jetbrainsmono1251JSON,
-		"jetbrainsmono_1251.z":         jetbrainsmono1251Z,
-		"jetbrainsmono_bold_1251.json": jetbrainsmono1251BoldJSON,
-		"jetbrainsmono_bold_1251.z":    jetbrainsmono1251BoldZ,
-	}
-
-	for filename, data := range fontFiles {
-		if err := os.WriteFile(tmpDir+"/"+filename, data, 0644); err != nil {
-			return fmt.Errorf("failed to write font file %s: %w", filename, err)
-		}
-	}
-
-	// Create PDF with UTF-8 support
-	c.pdf = gofpdf.New("L", "mm", "A4", tmpDir)
-	c.pdf.SetAutoPageBreak(false, 0)
-
-	// Add Cyrillic fonts with cp1251 encoding
-	c.pdf.AddFont("Helvetica", "", "helvetica_1251.json")
-	c.pdf.AddFont("Helvetica", "B", "helvetica_1251.json")
-	c.pdf.AddFont("Helvetica", "I", "helvetica_1251.json")
-
-	// Add JetBrains Mono for code blocks
-	c.pdf.AddFont("JetBrainsMono", "", "jetbrainsmono_1251.json")
-	c.pdf.AddFont("JetBrainsMono", "B", "jetbrainsmono_bold_1251.json")
-
-	// Initialize UTF-8 translation for Cyrillic (cp1251)
-	tr := c.pdf.UnicodeTranslatorFromDescriptor("cp1251")
-
-	// Store translator for later use
-	c.translator = tr
+	defer cleanup()
 
 	// Render title slide
 	c.currentSlideNumber = 1
