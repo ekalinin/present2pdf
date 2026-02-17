@@ -433,13 +433,11 @@ func (c *Converter) renderMarkdownCodeBlock(content string, y float64) float64 {
 func (c *Converter) renderList(list present.List, y float64) float64 {
 	c.setTextFont("", 12)
 
+	bullet := "• "
 	for _, item := range list.Bullet {
 		c.pdf.SetXY(25, y)
 
-		// Bullet point
-		bullet := "-"
-
-		fullText := bullet + " " + item
+		fullText := bullet + item
 
 		c.pdf.MultiCell(247, 6, c.translator(fullText), "", "L", false)
 		y += 8
@@ -624,7 +622,7 @@ func (c *Converter) renderHTMLList(html string, y float64) float64 {
 			c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
 			c.setTextFont("", 12)
 			c.pdf.SetXY(25, y)
-			c.pdf.Cell(5, 6, c.translator("- "))
+			c.pdf.Cell(5, 6, c.translator("• "))
 
 			// Render formatted text
 			y = c.renderFormattedText(fragments, 30, y, 247, 6)
