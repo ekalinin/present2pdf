@@ -1535,6 +1535,95 @@ func TestRenderLinkUnit(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLBlockquote(t *testing.T) {
+	conv := NewConverter()
+	conv.pdf = gofpdf.New("L", "mm", "A4", "")
+	conv.pdf.AddPage()
+	conv.translator = conv.pdf.UnicodeTranslatorFromDescriptor("")
+
+	tests := []struct {
+		name string
+		html string
+	}{
+		{
+			name: "simple blockquote with paragraph",
+			html: "<blockquote>\n<p>This is a quoted text block.</p>\n</blockquote>",
+		},
+		{
+			name: "blockquote with multiple paragraphs",
+			html: "<blockquote>\n<p>First paragraph of the quote.</p>\n<p>Second paragraph of the quote.</p>\n</blockquote>",
+		},
+		{
+			name: "blockquote with bold text",
+			html: "<blockquote>\n<p>Quote with <strong>bold</strong> content.</p>\n</blockquote>",
+		},
+		{
+			name: "blockquote with no p tags",
+			html: "<blockquote>Plain text without paragraph tags.</blockquote>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			startY := 45.0
+			endY := conv.renderHTMLBlockquote(tt.html, startY)
+			if endY <= startY {
+				t.Errorf("renderHTMLBlockquote() did not advance Y: startY=%v, endY=%v", startY, endY)
+			}
+		})
+	}
+}
+
+func TestConvertMarkdownBlockquote(t *testing.T) {
+	slideContent := `# Blockquote Test
+Test Presentation
+18 Feb 2026
+
+Author Name
+author@example.com
+
+## Slide With Blockquote
+
+Regular paragraph before quote.
+
+> This is a blockquote block.
+> It can span multiple lines.
+
+Regular paragraph after quote.
+
+## Slide With Bold Blockquote
+
+> **Important:** This is a bold quote.
+`
+
+	tmpFile, err := os.CreateTemp("", "blockquote-*.slide")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	err = conv.Convert(tmpFile.Name(), outputPath)
+	if err != nil {
+		t.Errorf("Convert() error = %v", err)
+	}
+
+	info, err := os.Stat(outputPath)
+	if os.IsNotExist(err) {
+		t.Errorf("Output PDF file was not created")
+	} else if info.Size() < 1024 {
+		t.Errorf("PDF file too small: %d bytes", info.Size())
+	}
+}
+
 func TestRenderWithDifferentPDFThemes(t *testing.T) {
 	// Test rendering with different PDF themes
 	slideContent := `# Theme Test

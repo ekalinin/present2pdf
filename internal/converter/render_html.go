@@ -24,6 +24,7 @@ func (c *Converter) renderHTML(html present.HTML, y float64) float64 {
 	hasCode := strings.Contains(htmlContent, "<pre><code")
 	hasLists := strings.Contains(htmlContent, "<ul>") || strings.Contains(htmlContent, "<ol>")
 	hasParagraphs := strings.Contains(htmlContent, "<p>")
+	hasBlockquote := strings.Contains(htmlContent, "<blockquote>")
 
 	// Count how many different types we have
 	typeCount := 0
@@ -36,6 +37,9 @@ func (c *Converter) renderHTML(html present.HTML, y float64) float64 {
 	if hasParagraphs {
 		typeCount++
 	}
+	if hasBlockquote {
+		typeCount++
+	}
 
 	// If content has multiple element types, render them in order
 	if typeCount > 1 {
@@ -43,6 +47,10 @@ func (c *Converter) renderHTML(html present.HTML, y float64) float64 {
 	}
 
 	// Handle single element types
+	if hasBlockquote {
+		return c.renderHTMLBlockquote(htmlContent, y)
+	}
+
 	if hasCode {
 		return c.renderHTMLCode(htmlContent, y)
 	}
@@ -59,11 +67,11 @@ func (c *Converter) renderHTML(html present.HTML, y float64) float64 {
 	return c.renderHTMLPlainText(htmlContent, y)
 }
 
-// renderHTMLMixed renders HTML content with mixed paragraphs, lists, and code blocks in order
+// renderHTMLMixed renders HTML content with mixed paragraphs, lists, code blocks, and blockquotes in order
 func (c *Converter) renderHTMLMixed(html string, y float64) float64 {
 	// Split by major HTML tags while preserving them
-	// Match: <p>...</p>, <ul>...</ul>, <ol>...</ol>, <pre><code>...</code></pre>
-	re := regexp.MustCompile(`(?s)(<pre><code.*?</code></pre>|<p>.*?</p>|<ul>.*?</ul>|<ol>.*?</ol>)`)
+	// Blockquote is listed first to take priority over inner <p> tags
+	re := regexp.MustCompile(`(?s)(<blockquote>.*?</blockquote>|<pre><code.*?</code></pre>|<p>.*?</p>|<ul>.*?</ul>|<ol>.*?</ol>)`)
 	matches := re.FindAllString(html, -1)
 
 	for _, match := range matches {
@@ -73,7 +81,9 @@ func (c *Converter) renderHTMLMixed(html string, y float64) float64 {
 		}
 
 		// Determine element type and render accordingly
-		if strings.HasPrefix(match, "<pre><code") {
+		if strings.HasPrefix(match, "<blockquote>") {
+			y = c.renderHTMLBlockquote(match, y)
+		} else if strings.HasPrefix(match, "<pre><code") {
 			y = c.renderHTMLCode(match, y)
 		} else if strings.HasPrefix(match, "<p>") {
 			y = c.renderHTMLParagraphs(match, y)
@@ -171,6 +181,94 @@ func (c *Converter) renderHTMLCode(html string, y float64) float64 {
 	}
 
 	return c.renderHighlightedCode(tokens, y)
+}
+
+// renderHTMLBlockquote renders a Markdown blockquote (> text) as a styled block
+func (c *Converter) renderHTMLBlockquote(html string, y float64) float64 {
+	re := regexp.MustCompile(`(?s)<blockquote>\s*(.*?)\s*</blockquote>`)
+	match := re.FindStringSubmatch(html)
+	if len(match) < 2 {
+		return y
+	}
+	inner := strings.TrimSpace(match[1])
+
+	// Extract paragraphs from inner content
+	paraRe := regexp.MustCompile(`(?s)<p>(.*?)</p>`)
+	paraMatches := paraRe.FindAllStringSubmatch(inner, -1)
+
+	var paragraphsHTML []string
+	if len(paraMatches) == 0 {
+		// No <p> tags — treat whole inner content as one paragraph
+		text := stripHTMLTags(inner)
+		if t := strings.TrimSpace(text); t != "" {
+			paragraphsHTML = []string{t}
+		}
+	} else {
+		for _, m := range paraMatches {
+			if len(m) > 1 {
+				if t := strings.TrimSpace(m[1]); t != "" {
+					paragraphsHTML = append(paragraphsHTML, t)
+				}
+			}
+		}
+	}
+
+	if len(paragraphsHTML) == 0 {
+		return y
+	}
+
+	const (
+		borderWidth = 4.0  // mm
+		textX       = 28.0 // absolute X for text start (after left border)
+		textWidth   = 249.0
+		lineHeight  = 11.0
+		paddingV    = 4.0 // vertical padding top and bottom
+		paraSpacing = 3.0 // spacing between paragraphs
+	)
+
+	// Estimate total height using font metrics
+	c.setTextFont("", 18)
+	totalHeight := paddingV * 2
+	for i, paraHTML := range paragraphsHTML {
+		plainText := stripHTMLTags(paraHTML)
+		words := strings.Fields(plainText)
+		lineWidth := 0.0
+		lines := 1
+		for _, word := range words {
+			ww := c.pdf.GetStringWidth(c.translator(word + " "))
+			if lineWidth+ww > textWidth && lineWidth > 0 {
+				lines++
+				lineWidth = ww
+			} else {
+				lineWidth += ww
+			}
+		}
+		totalHeight += float64(lines) * lineHeight
+		if i < len(paragraphsHTML)-1 {
+			totalHeight += paraSpacing
+		}
+	}
+
+	// Draw background rectangle
+	c.pdf.SetFillColor(c.theme.BlockquoteBackground.R, c.theme.BlockquoteBackground.G, c.theme.BlockquoteBackground.B)
+	c.pdf.Rect(20, y, 257, totalHeight, "F")
+
+	// Draw left border
+	c.pdf.SetFillColor(c.theme.BlockquoteBorder.R, c.theme.BlockquoteBorder.G, c.theme.BlockquoteBorder.B)
+	c.pdf.Rect(20, y, borderWidth, totalHeight, "F")
+
+	// Render paragraph text on top
+	textY := y + paddingV
+	for i, paraHTML := range paragraphsHTML {
+		fragments := parseHTMLFormatting(paraHTML)
+		c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
+		textY = c.renderFormattedText(fragments, textX, textY, textWidth, lineHeight)
+		if i < len(paragraphsHTML)-1 {
+			textY += paraSpacing
+		}
+	}
+
+	return y + totalHeight + 5
 }
 
 // renderHTMLPlainText renders HTML as plain text (fallback)
