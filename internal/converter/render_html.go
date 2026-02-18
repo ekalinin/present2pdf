@@ -12,6 +12,7 @@ type TextFragment struct {
 	Text   string
 	Bold   bool
 	Italic bool
+	Code   bool   // inline code (monospace font + background)
 	URL    string // non-empty for clickable links
 }
 
@@ -300,6 +301,7 @@ func parseHTMLFormatting(html string) []TextFragment {
 
 	bold := false
 	italic := false
+	code := false
 	currentURL := ""
 	var currentText strings.Builder
 
@@ -310,6 +312,7 @@ func parseHTMLFormatting(html string) []TextFragment {
 				Text:   text,
 				Bold:   bold,
 				Italic: italic,
+				Code:   code,
 				URL:    currentURL,
 			})
 			currentText.Reset()
@@ -334,6 +337,10 @@ func parseHTMLFormatting(html string) []TextFragment {
 				italic = true
 			case lowerMatch == "</em>" || lowerMatch == "</i>":
 				italic = false
+			case lowerMatch == "<code>":
+				code = true
+			case lowerMatch == "</code>":
+				code = false
 			case strings.HasPrefix(lowerMatch, "<a "):
 				if m := hrefRe.FindStringSubmatch(match); len(m) > 1 {
 					currentURL = m[1]
@@ -365,8 +372,12 @@ func (c *Converter) renderFormattedText(fragments []TextFragment, x, y, maxWidth
 
 	for _, fragment := range fragments {
 		isLink := fragment.URL != ""
+		isCode := fragment.Code
 
-		if isLink {
+		if isCode {
+			c.setCodeFont("", 16)
+			c.pdf.SetTextColor(c.theme.InlineCodeText.R, c.theme.InlineCodeText.G, c.theme.InlineCodeText.B)
+		} else if isLink {
 			c.pdf.SetTextColor(c.theme.LinkColor.R, c.theme.LinkColor.G, c.theme.LinkColor.B)
 		}
 
@@ -378,6 +389,12 @@ func (c *Converter) renderFormattedText(fragments []TextFragment, x, y, maxWidth
 			if currentX+wordWidth > x+maxWidth && currentX > x {
 				currentY += lineHeight
 				currentX = x
+			}
+
+			if isCode {
+				c.pdf.SetFillColor(c.theme.InlineCodeBackground.R, c.theme.InlineCodeBackground.G, c.theme.InlineCodeBackground.B)
+				c.pdf.Rect(currentX, currentY+0.5, wordWidth, lineHeight-1, "F")
+				c.pdf.SetTextColor(c.theme.InlineCodeText.R, c.theme.InlineCodeText.G, c.theme.InlineCodeText.B)
 			}
 
 			drawWord := func() {
@@ -419,7 +436,10 @@ func (c *Converter) renderFormattedText(fragments []TextFragment, x, y, maxWidth
 			currentX += wordWidth
 		}
 
-		if isLink {
+		if isCode {
+			c.setTextFont("", 18)
+			c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
+		} else if isLink {
 			// Restore normal text color
 			c.pdf.SetTextColor(c.theme.SlideText.R, c.theme.SlideText.G, c.theme.SlideText.B)
 		}

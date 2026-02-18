@@ -32,6 +32,10 @@ type Theme struct {
 	// Blockquote colors
 	BlockquoteBackground RGB
 	BlockquoteBorder     RGB
+
+	// Inline code colors
+	InlineCodeBackground RGB
+	InlineCodeText       RGB
 }
 
 // Predefined themes
@@ -52,6 +56,8 @@ var (
 		LinkColor:            RGB{0, 102, 204},   // Link blue
 		BlockquoteBackground: RGB{240, 247, 255}, // Light blue-white
 		BlockquoteBorder:     RGB{41, 128, 185},  // Blue (same as title)
+		InlineCodeBackground: RGB{235, 237, 240}, // Light gray
+		InlineCodeText:       RGB{40, 44, 52},    // Dark (matches code block background)
 	}
 
 	// DarkTheme is a dark theme
@@ -70,6 +76,8 @@ var (
 		LinkColor:            RGB{137, 180, 250}, // Light blue
 		BlockquoteBackground: RGB{48, 52, 72},    // Slightly lighter than slide bg
 		BlockquoteBorder:     RGB{137, 180, 250}, // Light blue (same as title)
+		InlineCodeBackground: RGB{48, 52, 72},    // Slightly lighter than slide bg
+		InlineCodeText:       RGB{205, 214, 244}, // Light gray (same as slide text)
 	}
 
 	// availableThemes maps theme names to themes

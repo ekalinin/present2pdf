@@ -1246,6 +1246,22 @@ func TestParseHTMLFormatting(t *testing.T) {
 			},
 		},
 		{
+			name:  "inline code",
+			input: "<code>(r Rectangle)</code>",
+			wantFrags: []TextFragment{
+				{Text: "(r Rectangle)", Code: true},
+			},
+		},
+		{
+			name:  "inline code inside text",
+			input: "call <code>Foo()</code> here",
+			wantFrags: []TextFragment{
+				{Text: "call "},
+				{Text: "Foo()", Code: true},
+				{Text: " here"},
+			},
+		},
+		{
 			name:      "empty input",
 			input:     "",
 			wantFrags: nil,
@@ -1271,6 +1287,9 @@ func TestParseHTMLFormatting(t *testing.T) {
 				}
 				if frag.Italic != want.Italic {
 					t.Errorf("fragment[%d].Italic = %v, want %v", i, frag.Italic, want.Italic)
+				}
+				if frag.Code != want.Code {
+					t.Errorf("fragment[%d].Code = %v, want %v", i, frag.Code, want.Code)
 				}
 				if frag.URL != want.URL {
 					t.Errorf("fragment[%d].URL = %q, want %q", i, frag.URL, want.URL)
@@ -1571,6 +1590,51 @@ func TestRenderHTMLBlockquote(t *testing.T) {
 				t.Errorf("renderHTMLBlockquote() did not advance Y: startY=%v, endY=%v", startY, endY)
 			}
 		})
+	}
+}
+
+func TestConvertMarkdownInlineCode(t *testing.T) {
+	slideContent := `# Inline Code Test
+Test Presentation
+18 Feb 2026
+
+Author Name
+
+## Slide With Inline Code
+
+Use ` + "`(r Rectangle)`" + ` as a receiver.
+
+- Call ` + "`Foo()`" + ` to start
+- Set ` + "`x := 42`" + ` before calling
+
+Mixed: use **bold** and ` + "`code`" + ` together.
+`
+
+	tmpFile, err := os.CreateTemp("", "inlinecode-*.slide")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	err = conv.Convert(tmpFile.Name(), outputPath)
+	if err != nil {
+		t.Errorf("Convert() error = %v", err)
+	}
+
+	info, err := os.Stat(outputPath)
+	if os.IsNotExist(err) {
+		t.Errorf("Output PDF file was not created")
+	} else if info.Size() < 1024 {
+		t.Errorf("PDF file too small: %d bytes", info.Size())
 	}
 }
 
