@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/jung-kurt/gofpdf"
 	"golang.org/x/tools/present"
@@ -37,6 +38,7 @@ type Converter struct {
 	translator         func(string) string // UTF-8 translator
 	codeTheme          string              // Name of the syntax highlighting style
 	theme              Theme               // Color theme for the presentation
+	slideDir           string              // Directory of the source slide file (for resolving relative paths)
 	currentSlideTitle  string              // For diagnostic messages
 	currentSlideNumber int                 // For diagnostic messages
 	quiet              bool                // Suppress diagnostic warnings
@@ -161,6 +163,8 @@ func (c *Converter) Convert(inputPath, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse presentation: %w", err)
 	}
+
+	c.slideDir = filepath.Dir(inputPath)
 
 	cleanup, err := c.initPDF()
 	if err != nil {

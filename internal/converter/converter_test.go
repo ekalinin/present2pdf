@@ -1,8 +1,12 @@
 package converter
 
 import (
+	"image"
+	"image/color"
+	"image/png"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -1685,6 +1689,123 @@ Regular paragraph after quote.
 		t.Errorf("Output PDF file was not created")
 	} else if info.Size() < 1024 {
 		t.Errorf("PDF file too small: %d bytes", info.Size())
+	}
+}
+
+// createTestPNG creates a small solid-color PNG image at the given path.
+func createTestPNG(t *testing.T, path string, w, h int) {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			img.Set(x, y, color.RGBA{R: 100, G: 149, B: 237, A: 255})
+		}
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("createTestPNG: %v", err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatalf("createTestPNG encode: %v", err)
+	}
+}
+
+func TestRenderImageLegacy(t *testing.T) {
+	// Create temp dir with a test image and slide
+	dir := t.TempDir()
+	imgPath := filepath.Join(dir, "test.png")
+	createTestPNG(t, imgPath, 400, 300)
+
+	slideContent := "Legacy With Image\nTest\n18 Feb 2026\n\nAuthor\n\n* Image Slide\n\n.image test.png\n"
+	slideFile := filepath.Join(dir, "test.slide")
+	if err := os.WriteFile(slideFile, []byte(slideContent), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	outputPath := filepath.Join(dir, "out.pdf")
+	conv := NewConverter()
+	if err := conv.Convert(slideFile, outputPath); err != nil {
+		t.Fatalf("Convert() error = %v", err)
+	}
+
+	info, err := os.Stat(outputPath)
+	if os.IsNotExist(err) {
+		t.Fatal("Output PDF not created")
+	}
+	if info.Size() < 1024 {
+		t.Errorf("PDF too small: %d bytes", info.Size())
+	}
+}
+
+func TestRenderImageMarkdown(t *testing.T) {
+	dir := t.TempDir()
+	imgPath := filepath.Join(dir, "photo.png")
+	createTestPNG(t, imgPath, 800, 600)
+
+	slideContent := "# Markdown With Image\n18 Feb 2026\n\nAuthor\n\n## Slide With Image\n\n![alt text](photo.png)\n"
+	slideFile := filepath.Join(dir, "test.slide")
+	if err := os.WriteFile(slideFile, []byte(slideContent), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	outputPath := filepath.Join(dir, "out.pdf")
+	conv := NewConverter()
+	if err := conv.Convert(slideFile, outputPath); err != nil {
+		t.Fatalf("Convert() error = %v", err)
+	}
+
+	info, err := os.Stat(outputPath)
+	if os.IsNotExist(err) {
+		t.Fatal("Output PDF not created")
+	}
+	if info.Size() < 1024 {
+		t.Errorf("PDF too small: %d bytes", info.Size())
+	}
+}
+
+func TestRenderImageMissingFile(t *testing.T) {
+	// Missing image should log warning but not fail conversion
+	slideContent := "Legacy Presentation\nTest\n18 Feb 2026\n\nAuthor\n\n* Slide\n\n.image nonexistent.png\n"
+	tmpFile, err := os.CreateTemp("", "imgmissing-*.slide")
+	if err != nil {
+		t.Fatalf("CreateTemp: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter(WithQuiet(true))
+	if err := conv.Convert(tmpFile.Name(), outputPath); err != nil {
+		t.Errorf("Convert() should not fail for missing image, got: %v", err)
+	}
+}
+
+func TestRenderHTMLImage(t *testing.T) {
+	dir := t.TempDir()
+	imgPath := filepath.Join(dir, "icon.png")
+	createTestPNG(t, imgPath, 100, 100)
+
+	conv := NewConverter()
+	conv.slideDir = dir
+
+	cleanup, err := conv.initPDF()
+	if err != nil {
+		t.Fatalf("initPDF: %v", err)
+	}
+	defer cleanup()
+	conv.pdf.AddPage()
+
+	imgHTML := `<img src="icon.png" alt="icon">`
+	newY := conv.renderHTMLImage(imgHTML, 50.0)
+	if newY <= 50.0 {
+		t.Errorf("renderHTMLImage() did not advance Y: got %.1f, started at 50.0", newY)
 	}
 }
 

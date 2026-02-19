@@ -64,6 +64,11 @@ func (c *Converter) renderHTML(html present.HTML, y float64) float64 {
 		return c.renderHTMLParagraphs(htmlContent, y)
 	}
 
+	// Standalone <img> tag (not wrapped in <p>)
+	if strings.Contains(htmlContent, "<img ") {
+		return c.renderHTMLImage(htmlContent, y)
+	}
+
 	// Fallback: render as plain text
 	return c.renderHTMLPlainText(htmlContent, y)
 }
@@ -102,11 +107,19 @@ func (c *Converter) renderHTMLParagraphs(html string, y float64) float64 {
 	re := regexp.MustCompile(`(?s)<p>(.*?)</p>`)
 	matches := re.FindAllStringSubmatch(html, -1)
 
+	imgTagRe := regexp.MustCompile(`(?i)^<img\s`)
+
 	for _, match := range matches {
 		if len(match) > 1 {
 			paragraphHTML := strings.TrimSpace(match[1])
 
 			if paragraphHTML == "" {
+				continue
+			}
+
+			// Paragraph contains only an image tag — render as image
+			if imgTagRe.MatchString(paragraphHTML) {
+				y = c.renderHTMLImage(paragraphHTML, y)
 				continue
 			}
 

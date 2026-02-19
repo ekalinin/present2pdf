@@ -103,6 +103,8 @@ func (c *Converter) renderElement(elem present.Elem, y float64) float64 {
 		return c.renderHTML(e, y)
 	case present.Link:
 		return c.renderLink(e, y)
+	case present.Image:
+		return c.renderImage(e, y)
 	default:
 		// Skip unsupported elements
 		return y
