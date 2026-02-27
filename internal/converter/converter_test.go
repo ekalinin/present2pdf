@@ -1872,6 +1872,31 @@ func TestPreprocessMarkdownComments(t *testing.T) {
 			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```go\n// ./my-module/internal/config/file.go\npackage config\n```\n",
 			want:  "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```go\n\u200C// ./my-module/internal/config/file.go\npackage config\n```\n",
 		},
+		{
+			name:  "markdown - # comment inside bash code block escaped",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```bash\n# shell comment\necho hello\n```\n",
+			want:  "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```bash\n\u200C# shell comment\necho hello\n```\n",
+		},
+		{
+			name:  "markdown - shebang inside code block escaped",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```bash\n#!/usr/bin/env bash\necho hi\n```\n",
+			want:  "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```bash\n\u200C#!/usr/bin/env bash\necho hi\n```\n",
+		},
+		{
+			name:  "markdown - ## inside code block escaped",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```c\n## pragma-style comment\nint x;\n```\n",
+			want:  "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```c\n\u200C## pragma-style comment\nint x;\n```\n",
+		},
+		{
+			name:  "markdown - # outside code block not escaped",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\nSome text.\n",
+			want:  "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\nSome text.\n",
+		},
+		{
+			name: "markdown - # and $ in bash block: hash escaped, dollar kept",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```bash\n# Создание нового модуля\n$ go mod init github.com/username/project-name\n```\n",
+			want: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```bash\n\u200C# Создание нового модуля\n$ go mod init github.com/username/project-name\n```\n",
+		},
 	}
 
 	for _, tt := range tests {
@@ -2002,6 +2027,101 @@ func TestPreprocessMarkdownCommentsDoesNotAffectPresentParsing(t *testing.T) {
 
 	if !found {
 		t.Error("present.Parse() stripped the // comment line from the code block; " +
+			"preprocessMarkdownComments did not protect it correctly")
+	}
+}
+
+func TestConvertMarkdownBashCodeBlockWithHashLines(t *testing.T) {
+	// Regression test: lines starting with # or #! inside ``` bash code blocks
+	// must not be stripped/broken by the present parser.
+	slideContent := "# Go Module Setup\n" +
+		"15 Feb 2026\n\n" +
+		"Author\n\n" +
+		"## Создание модуля\n\n" +
+		"```bash\n" +
+		"# Создание нового модуля\n" +
+		"$ go mod init github.com/username/project-name\n" +
+		"```\n\n" +
+		"## Shebang Example\n\n" +
+		"```bash\n" +
+		"#!/usr/bin/env bash\n" +
+		"echo \"Hello\"\n" +
+		"```\n"
+
+	tmpFile, err := os.CreateTemp("", "bashcode-*.slide")
+	if err != nil {
+		t.Fatalf("CreateTemp: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	if err := conv.Convert(tmpFile.Name(), outputPath); err != nil {
+		t.Fatalf("Convert() failed for bash code block with # lines: %v", err)
+	}
+
+	info, err := os.Stat(outputPath)
+	if os.IsNotExist(err) {
+		t.Fatal("Output PDF file was not created")
+	}
+	if info.Size() < 1024 {
+		t.Errorf("PDF file too small: %d bytes", info.Size())
+	}
+}
+
+func TestBashHashLinesPreservedInPresentHTML(t *testing.T) {
+	// Check that after preprocessing, present.Parse keeps the # lines inside
+	// the code block HTML (they must NOT be treated as headings).
+	slideContent := "# Title\n" +
+		"15 Feb 2026\n\n" +
+		"Author\n\n" +
+		"## Slide\n\n" +
+		"```bash\n" +
+		"# Создание нового модуля\n" +
+		"$ go mod init github.com/username/project-name\n" +
+		"```\n"
+
+	preprocessed := preprocessMarkdownComments([]byte(slideContent))
+
+	ctx := present.Context{
+		ReadFile: func(name string) ([]byte, error) {
+			return os.ReadFile(name)
+		},
+	}
+	doc, err := ctx.Parse(bytes.NewReader(preprocessed), "test.slide", 0)
+	if err != nil {
+		t.Fatalf("present.Parse() error: %v", err)
+	}
+
+	if len(doc.Sections) == 0 {
+		t.Fatal("present.Parse() returned no sections")
+	}
+
+	// There must be exactly one HTML element whose content is a non-empty
+	// <pre><code> block that contains both the # line and the $ line.
+	found := false
+	for _, section := range doc.Sections {
+		for _, elem := range section.Elem {
+			if h, ok := elem.(present.HTML); ok {
+				html := string(h.HTML)
+				if strings.Contains(html, "<pre><code") &&
+					strings.Contains(html, "\u200C# Создание нового модуля") &&
+					strings.Contains(html, "$ go mod init github.com/username/project-name") {
+					found = true
+				}
+			}
+		}
+	}
+
+	if !found {
+		t.Error("present.Parse() did not preserve the # line inside the bash code block; " +
 			"preprocessMarkdownComments did not protect it correctly")
 	}
 }
