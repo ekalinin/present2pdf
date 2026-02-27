@@ -180,6 +180,11 @@ func (c *Converter) renderHTMLCode(html string, y float64) float64 {
 	// Decode HTML entities (e.g., &quot; -> ", &lt; -> <, etc.)
 	codeText = decodeHTMLEntities(codeText)
 
+	// Remove the zero-width non-joiner (U+200C) that was inserted by
+	// preprocessMarkdownComments to protect "//" lines from being stripped
+	// by the present parser in markdown mode.
+	codeText = strings.ReplaceAll(codeText, "\u200C", "")
+
 	// Try to detect language from class attribute
 	language := "go" // default
 	classRe := regexp.MustCompile(`<code class="language-(\w+)">`)

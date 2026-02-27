@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jung-kurt/gofpdf"
 	"golang.org/x/tools/present"
@@ -144,6 +145,33 @@ func (c *Converter) setCodeFont(style string, size float64) {
 	c.pdf.SetFont("JetBrainsMono", style, size)
 }
 
+// preprocessMarkdownComments escapes Go comment lines (starting with //) inside
+// ``` code blocks so the present parser does not treat them as slide-file comments.
+//
+// In markdown mode the present package sets lines.comment = "//" and silently
+// drops every line whose first two characters are "//". This is intended for
+// presenter-note comments in the slide source, but it also strips Go comment
+// lines that live inside fenced code blocks (```). We work around this by
+// prepending a zero-width non-joiner (U+200C) to such lines before parsing,
+// and strip it again when rendering the code block.
+func preprocessMarkdownComments(content []byte) []byte {
+	text := strings.TrimLeft(string(content), " \r\n")
+	if !strings.HasPrefix(text, "# ") {
+		return content
+	}
+
+	lines := strings.Split(string(content), "\n")
+	inCodeBlock := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			inCodeBlock = !inCodeBlock
+		} else if inCodeBlock && strings.HasPrefix(line, "//") {
+			lines[i] = "\u200C" + line
+		}
+	}
+	return []byte(strings.Join(lines, "\n"))
+}
+
 // Convert converts a .slide file to PDF
 func (c *Converter) Convert(inputPath, outputPath string) error {
 	// Read the slide file
@@ -151,6 +179,8 @@ func (c *Converter) Convert(inputPath, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read input file: %w", err)
 	}
+
+	content = preprocessMarkdownComments(content)
 
 	// Parse the presentation
 	ctx := present.Context{

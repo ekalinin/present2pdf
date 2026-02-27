@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"image/png"
@@ -1806,6 +1807,202 @@ func TestRenderHTMLImage(t *testing.T) {
 	newY := conv.renderHTMLImage(imgHTML, 50.0)
 	if newY <= 50.0 {
 		t.Errorf("renderHTMLImage() did not advance Y: got %.1f, started at 50.0", newY)
+	}
+}
+
+// --------------------------------------------------------------------------
+// Tests for preprocessMarkdownComments (bug-fix: // in ``` blocks stripped)
+// --------------------------------------------------------------------------
+
+func TestPreprocessMarkdownComments(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "legacy format - not modified",
+			input: "My Presentation\n```go\n// comment\npackage main\n```\n",
+			want:  "My Presentation\n```go\n// comment\npackage main\n```\n",
+		},
+		{
+			name:  "markdown - // outside code block not escaped",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n// This is a slide comment\n",
+			want:  "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n// This is a slide comment\n",
+		},
+		{
+			name:  "markdown - // inside code block escaped",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```go\n// comment\npackage main\n```\n",
+			want:  "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```go\n\u200C// comment\npackage main\n```\n",
+		},
+		{
+			name: "markdown - multiple // lines in one block",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```go\n" +
+				"// Package config\n// provides config.\npackage config\n```\n",
+			want: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```go\n" +
+				"\u200C// Package config\n\u200C// provides config.\npackage config\n```\n",
+		},
+		{
+			name: "markdown - // in multiple separate code blocks",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide 1\n\n```go\n// c1\n```\n\n## Slide 2\n\n```go\n// c2\n```\n",
+			want: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide 1\n\n```go\n\u200C// c1\n```\n\n## Slide 2\n\n```go\n\u200C// c2\n```\n",
+		},
+		{
+			name: "markdown - slide comment outside vs code comment inside",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n// slide comment\n```go\n// code comment\n```\n",
+			want: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n// slide comment\n```go\n\u200C// code comment\n```\n",
+		},
+		{
+			name:  "markdown - non-// comment (/*) not escaped",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```go\n/* block comment */\npackage main\n```\n",
+			want:  "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```go\n/* block comment */\npackage main\n```\n",
+		},
+		{
+			name:  "markdown - language specifier in opening fence",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```python\n// not python but has slashes\n```\n",
+			want:  "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```python\n\u200C// not python but has slashes\n```\n",
+		},
+		{
+			name:  "empty content",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "markdown - file path comment (original bug case)",
+			input: "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```go\n// ./my-module/internal/config/file.go\npackage config\n```\n",
+			want:  "# Title\n15 Feb 2026\n\nAuthor\n\n## Slide\n\n```go\n\u200C// ./my-module/internal/config/file.go\npackage config\n```\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := string(preprocessMarkdownComments([]byte(tt.input)))
+			if got != tt.want {
+				t.Errorf("preprocessMarkdownComments():\ngot:  %q\nwant: %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRenderHTMLCodeStripsEscapePrefix(t *testing.T) {
+	// renderHTMLCode must strip the \u200C prefix inserted by
+	// preprocessMarkdownComments so it does not appear in the rendered PDF.
+	conv := NewConverter()
+	cleanup, err := conv.initPDF()
+	if err != nil {
+		t.Fatalf("initPDF: %v", err)
+	}
+	defer cleanup()
+	conv.pdf.AddPage()
+
+	html := "<pre><code class=\"language-go\">" +
+		"\u200C// ./my-module/internal/config/file.go\npackage config\n" +
+		"</code></pre>"
+
+	startY := 45.0
+	newY := conv.renderHTMLCode(html, startY)
+	if newY <= startY {
+		t.Errorf("renderHTMLCode() did not advance Y: got %.1f, started at %.1f", newY, startY)
+	}
+}
+
+func TestConvertMarkdownCodeBlockWithGoComments(t *testing.T) {
+	// Regression test: // lines inside ``` code blocks must survive
+	// the present parser and appear in the generated PDF without error.
+	slideContent := "# Config Module\n" +
+		"15 Feb 2026\n\n" +
+		"Author\n\n" +
+		"## File Header Comment\n\n" +
+		"```go\n" +
+		"// ./my-module/internal/config/file.go\n" +
+		"package config\n" +
+		"```\n\n" +
+		"## Multiple Comments\n\n" +
+		"```go\n" +
+		"// Package config provides configuration management.\n" +
+		"// It reads from environment variables and config files.\n" +
+		"package config\n\n" +
+		"import \"os\"\n\n" +
+		"// Config holds the application configuration.\n" +
+		"type Config struct {\n" +
+		"    Port string\n" +
+		"}\n" +
+		"```\n"
+
+	tmpFile, err := os.CreateTemp("", "gocomments-*.slide")
+	if err != nil {
+		t.Fatalf("CreateTemp: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(slideContent)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	tmpFile.Close()
+
+	outputPath := strings.TrimSuffix(tmpFile.Name(), ".slide") + ".pdf"
+	defer os.Remove(outputPath)
+
+	conv := NewConverter()
+	if err := conv.Convert(tmpFile.Name(), outputPath); err != nil {
+		t.Fatalf("Convert() failed for slide with // code comments: %v", err)
+	}
+
+	info, err := os.Stat(outputPath)
+	if os.IsNotExist(err) {
+		t.Fatal("Output PDF file was not created")
+	}
+	if info.Size() < 1024 {
+		t.Errorf("PDF file too small: %d bytes", info.Size())
+	}
+}
+
+func TestPreprocessMarkdownCommentsDoesNotAffectPresentParsing(t *testing.T) {
+	// End-to-end check: after preprocessing, present.Parse must include the
+	// // comment line in the generated HTML (it must NOT be stripped).
+	slideContent := "# Title\n" +
+		"15 Feb 2026\n\n" +
+		"Author\n\n" +
+		"## Slide\n\n" +
+		"```go\n" +
+		"// ./my-module/internal/config/file.go\n" +
+		"package config\n" +
+		"```\n"
+
+	preprocessed := preprocessMarkdownComments([]byte(slideContent))
+
+	ctx := present.Context{
+		ReadFile: func(name string) ([]byte, error) {
+			return os.ReadFile(name)
+		},
+	}
+	doc, err := ctx.Parse(bytes.NewReader(preprocessed), "test.slide", 0)
+	if err != nil {
+		t.Fatalf("present.Parse() error: %v", err)
+	}
+
+	if len(doc.Sections) == 0 {
+		t.Fatal("present.Parse() returned no sections")
+	}
+
+	// Walk all elements looking for an HTML element that contains the comment.
+	found := false
+	for _, section := range doc.Sections {
+		for _, elem := range section.Elem {
+			if h, ok := elem.(present.HTML); ok {
+				html := string(h.HTML)
+				// The \u200C prefix must be present at this stage (it's stripped
+				// later by renderHTMLCode, not by present).
+				if strings.Contains(html, "\u200C// ./my-module/internal/config/file.go") {
+					found = true
+				}
+			}
+		}
+	}
+
+	if !found {
+		t.Error("present.Parse() stripped the // comment line from the code block; " +
+			"preprocessMarkdownComments did not protect it correctly")
 	}
 }
 
